@@ -138,3 +138,105 @@ class SkyboxLoginController(http.Controller):
         if rec:
             rec.active = False
         return {'success': True}
+
+    def _receipt_picking_type(self, user):
+        """Type d'operation Reception de l'entrepot de l'agent."""
+        env = request.env
+        warehouse = user.warehouse_id
+        if not warehouse:
+            employee = env['hr.employee'].sudo().search(
+                [('user_id', '=', user.id)], limit=1)
+            warehouse = employee.warehouse_id
+        if warehouse and warehouse.in_type_id:
+            return warehouse.in_type_id
+        return env['stock.picking.type'].sudo().search([
+            ('code', '=', 'incoming'),
+            ('company_id', 'in', user.company_ids.ids),
+        ], limit=1)
+
+    @http.route('/skybox/api/receive', type='json', auth='public',
+                methods=['POST'], csrf=False)
+    def api_receive(self, **kwargs):
+        """Cree une reception depuis l'app mobile.
+
+        En-tete: Authorization: Bearer <access_token>
+        Corps JSON attendu:
+            {"tracking_number": "...", "bag": "BAG001",
+             "courier": "DHL" (optionnel), "notes": "..." (optionnel)}
+        "bag" accepte le nom du bag ou son id ("bag_id").
+        L'agent est l'utilisateur du jeton ; la reception et le bag sont
+        enregistres dans l'historique.
+        """
+        token = request.env['skybox.access.token']._validate(
+            self._bearer_token(kwargs))
+        if not token:
+            return {'success': False, 'error': 'invalid_token'}
+        user = token.user_id
+        if not self._user_role(user):
+            return {'success': False, 'error': 'access_denied'}
+
+        tracking_number = (kwargs.get('tracking_number') or '').strip()
+        if not tracking_number:
+            return {'success': False, 'error': 'missing_tracking_number'}
+
+        # Environnement "agent" : sudo pour les droits, mais env.user = agent
+        # (createur de la reception + agent dans l'historique).
+        env = request.env(user=user.id, su=True)
+        Picking = env['stock.picking']
+
+        # Bag (obligatoire) : par id ou par nom.
+        Package = env['stock.quant.package']
+        bag = Package.browse()
+        bag_id = kwargs.get('bag_id')
+        bag_name = (kwargs.get('bag') or '').strip()
+        if bag_id:
+            bag = Package.browse(int(bag_id)).exists()
+        elif bag_name:
+            bag = Package.search([('name', '=ilike', bag_name)], limit=1)
+        if not bag_id and not bag_name:
+            return {'success': False, 'error': 'missing_bag'}
+        if not bag:
+            return {'success': False, 'error': 'bag_not_found'}
+
+        # Doublon : tracking deja recu (non annule).
+        existing = Picking.search([
+            ('picking_type_code', '=', 'incoming'),
+            ('tracking_number', '=ilike', tracking_number),
+            ('state', '!=', 'cancel'),
+        ], limit=1)
+        if existing:
+            return {'success': False, 'error': 'already_received',
+                    'picking_id': existing.id, 'reference': existing.name}
+
+        picking_type = self._receipt_picking_type(user)
+        if not picking_type:
+            return {'success': False, 'error': 'no_receipt_type'}
+
+        vals = {
+            'picking_type_id': picking_type.id,
+            'location_id': (picking_type.default_location_src_id.id
+                            or env.ref('stock.stock_location_suppliers').id),
+            'location_dest_id': picking_type.default_location_dest_id.id,
+            'tracking_number': tracking_number,
+            'bag': bag.id,
+            'notes': kwargs.get('notes') or False,
+            'company_id': picking_type.company_id.id,
+        }
+        if kwargs.get('courier'):
+            vals['courier_id'] = Picking._get_courier(kwargs['courier']).id
+
+        picking = Picking.with_context(
+            skybox_history_note="Recu via l'app mobile").create(vals)
+        history = picking.history_ids[:1]
+        return {
+            'success': True,
+            'picking_id': picking.id,
+            'reference': picking.name,
+            'tracking_number': picking.tracking_number,
+            'bag': bag.name,
+            'bag_id': bag.id,
+            'agent': user.name,
+            'agent_id': user.id,
+            'warehouse': picking_type.warehouse_id.name or None,
+            'date': fields.Datetime.to_string(history.date),
+        }

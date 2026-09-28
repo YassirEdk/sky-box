@@ -3,6 +3,7 @@ from . import res_users
 from . import hr_employee
 from . import courier
 from . import stock_picking
+from . import quant_package
 from . import picking_history
 from . import store_wizard
 from . import transfer_wizard

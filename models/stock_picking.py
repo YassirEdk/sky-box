@@ -80,9 +80,12 @@ class StockPicking(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         pickings = super().create(vals_list)
-        pickings.filtered(
-            lambda p: p.picking_type_code == 'incoming'
-        )._log_history('received')
+        note = self.env.context.get('skybox_history_note')
+        for picking in pickings.filtered(
+                lambda p: p.picking_type_code == 'incoming'):
+            picking._log_history(
+                'received', location=picking.location_dest_id,
+                bag=picking.bag, note=note)
         return pickings
 
     def action_open_store(self):

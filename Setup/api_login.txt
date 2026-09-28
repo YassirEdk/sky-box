@@ -13,9 +13,12 @@ Routes JSON-RPC : corps sous "params", reponse sous "result".
 1) LOGIN  ->  POST /skybox/api/login
 ---------------------------------------------------------------------------
 REQUETE :
-curl -X POST https://determines-government-tank-novel.trycloudflare.com/skybox/api/login \
+curl -X POST https://fantastic-chief-voip-requested.trycloudflare.com/skybox/api/login \
   -H "Content-Type: application/json" \
-  -d '{"params":{"api_key":"VOTRE_CLE_LOGIN","email":"admin","password":"MOT_DE_PASSE"}}'
+  -d '{"params":{"api_key":"rAtzYUsHFpSScIO1zD28pQBGtykrWCZNA9FMQDHlYy0","email":"admin","password":"admin"}}'
+
+
+68hZf9N6_M-3uOEfGJReE1ZSQHz7tLEf3jO-Yli0yp8woVrFCybbZL3dv4BeuxHo
 
 REPONSE (succes) :
 {

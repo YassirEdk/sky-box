@@ -70,3 +70,48 @@
 .o_skybox_amount {
     font-size: 14px;
 }
+
+/* ============ Cartes kanban Bags ============ */
+.o_skybox_bag_card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 14px 14px 16px;
+}
+
+.o_skybox_bag_icon {
+    flex: 0 0 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    background: rgba(var(--bs-info-rgb), 0.12);
+    color: var(--bs-info);
+}
+
+.o_skybox_card--secondary .o_skybox_bag_icon {
+    background: rgba(var(--bs-secondary-rgb), 0.12);
+    color: var(--bs-secondary);
+}
+
+.o_skybox_bag_info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.o_skybox_bag_count {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.1;
+}
+
+.o_skybox_bag_num {
+    font-size: 24px;
+    font-weight: 700;
+}

@@ -21,6 +21,7 @@ entrepots disponibles dans le module Inventory.
         'views/hr_employee_views.xml',
         'views/courier_views.xml',
         'views/api_key_views.xml',
+        'views/bag_views.xml',
         'views/tracking_views.xml',
         'views/check_tn_wizard_views.xml',
         'views/prealerte_views.xml',
