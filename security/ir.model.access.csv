@@ -1,0 +1,13 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_skybox_prealerte,skybox.prealerte,model_skybox_prealerte,base.group_user,1,1,1,1
+access_skybox_prealerte_line,skybox.prealerte.line,model_skybox_prealerte_line,base.group_user,1,1,1,1
+access_skybox_courier,skybox.courier,model_skybox_courier,base.group_user,1,1,1,1
+access_skybox_api_key,skybox.api.key,model_skybox_api_key,base.group_user,1,1,1,1
+access_skybox_tracking,skybox.tracking,model_skybox_tracking,base.group_user,1,1,1,1
+access_skybox_check_tn_wizard,skybox.check.tn.wizard,model_skybox_check_tn_wizard,base.group_user,1,1,1,1
+access_skybox_check_tn_line,skybox.check.tn.line,model_skybox_check_tn_line,base.group_user,1,1,1,1
+access_skybox_access_token,skybox.access.token,model_skybox_access_token,base.group_user,1,1,1,1
+access_skybox_login_attempt,skybox.login.attempt,model_skybox_login_attempt,base.group_user,1,1,1,1
+access_skybox_store_wizard,skybox.store.wizard,model_skybox_store_wizard,base.group_user,1,1,1,1
+access_skybox_picking_history,skybox.picking.history,model_skybox_picking_history,base.group_user,1,1,1,1
+access_skybox_transfer_wizard,skybox.transfer.wizard,model_skybox_transfer_wizard,base.group_user,1,1,1,1

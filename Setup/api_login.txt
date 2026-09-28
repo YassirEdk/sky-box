@@ -1,0 +1,82 @@
+===========================================================================
+ SKYBOX - API D'AUTHENTIFICATION (mobile / programme externe)
+===========================================================================
+Genere le : 2026-09-24 11:29:27
+
+URL HTTPS (tunnel Cloudflare, TEMPORAIRE - change si le tunnel redemarre) :
+  https://determines-government-tank-novel.trycloudflare.com
+
+Cle API "Login" : Odoo > Configuration > API management (type "Login").
+Routes JSON-RPC : corps sous "params", reponse sous "result".
+
+---------------------------------------------------------------------------
+1) LOGIN  ->  POST /skybox/api/login
+---------------------------------------------------------------------------
+REQUETE :
+curl -X POST https://determines-government-tank-novel.trycloudflare.com/skybox/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"params":{"api_key":"VOTRE_CLE_LOGIN","email":"admin","password":"MOT_DE_PASSE"}}'
+
+REPONSE (succes) :
+{
+  "result": {
+    "success": true,
+    "access_token": "abc123...",
+    "expiry": "2026-09-25 11:00:00",
+    "uid": 2,
+    "name": "Mitchell Admin",
+    "login": "admin",
+    "email": "admin@example.com",
+    "role": "admin"
+  }
+}
+  role = "admin" | "manager" | "agent" | null
+
+REPONSES (echecs) :
+  {"result":{"success":false,"error":"invalid_api_key"}}
+  {"result":{"success":false,"error":"missing_credentials"}}
+  {"result":{"success":false,"error":"invalid_credentials"}}
+  {"result":{"success":false,"error":"too_many_attempts","retry_after":900}}
+
+---------------------------------------------------------------------------
+2) UTILISATEUR COURANT  ->  POST /skybox/api/me
+---------------------------------------------------------------------------
+Prolonge la validite du jeton (glissante, 1 jour).
+
+REQUETE :
+curl -X POST https://determines-government-tank-novel.trycloudflare.com/skybox/api/me \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer VOTRE_ACCESS_TOKEN" \
+  -d '{"params":{}}'
+
+REPONSE (succes) :
+{
+  "result": {
+    "success": true,
+    "uid": 2, "name": "Mitchell Admin",
+    "login": "admin", "email": "admin@example.com",
+    "role": "admin", "expiry": "2026-09-25 12:30:00"
+  }
+}
+REPONSE (echec) : {"result":{"success":false,"error":"invalid_token"}}
+
+---------------------------------------------------------------------------
+3) LOGOUT  ->  POST /skybox/api/logout
+---------------------------------------------------------------------------
+curl -X POST https://determines-government-tank-novel.trycloudflare.com/skybox/api/logout \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer VOTRE_ACCESS_TOKEN" \
+  -d '{"params":{}}'
+
+REPONSE : {"result":{"success":true}}
+
+---------------------------------------------------------------------------
+NOTES
+---------------------------------------------------------------------------
+- Jeton a duree de vie glissante de 1 jour (prolongee a chaque /me).
+- "email" accepte l'email OU le login de l'utilisateur Odoo.
+- Seuls les utilisateurs crees dans Odoo peuvent se connecter.
+- Blocage anti-brute-force : 5 echecs -> 15 min (par IP+login).
+- Stockez le jeton dans le stockage securise du mobile (Keychain/Keystore).
+- URL temporaire : pour la production, domaine + named tunnel Cloudflare.
+===========================================================================

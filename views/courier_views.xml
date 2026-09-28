@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_skybox_courier_list" model="ir.ui.view">
+        <field name="name">skybox.courier.list</field>
+        <field name="model">skybox.courier</field>
+        <field name="arch" type="xml">
+            <list string="Transporteurs" editable="bottom">
+                <field name="name"/>
+                <field name="code"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_courier_form" model="ir.ui.view">
+        <field name="name">skybox.courier.form</field>
+        <field name="model">skybox.courier</field>
+        <field name="arch" type="xml">
+            <form string="Transporteur">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="code"/>
+                        <field name="active"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_skybox_courier" model="ir.actions.act_window">
+        <field name="name">Transporteurs</field>
+        <field name="res_model">skybox.courier</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_skybox_courier"
+              name="Transporteurs"
+              parent="menu_skybox_root"
+              action="action_skybox_courier"
+              sequence="20"/>
+
+</odoo>

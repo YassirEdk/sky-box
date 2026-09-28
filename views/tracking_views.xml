@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Vue liste Receipts (herite de stock.vpicktree) -->
+    <record id="view_skybox_receipts_picking_list" model="ir.ui.view">
+        <field name="name">skybox.receipts.picking.list</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.vpicktree"/>
+        <field name="mode">primary</field>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='state']" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='action_assign']" position="replace"/>
+            <xpath expr="//button[@name='do_unreserve']" position="replace">
+                <button name="action_check_tn" string="Match Prealertes" type="object"
+                        class="btn-primary"/>
+            </xpath>
+            <xpath expr="//field[@name='name']" position="after">
+                <field name="tracking_number" optional="show"/>
+                <field name="client_id" optional="show"/>
+                <field name="suite_number" optional="show"/>
+                <field name="courier_id" optional="show"/>
+                <field name="bag" optional="show"/>
+            </xpath>
+            <xpath expr="//list" position="inside">
+                <field name="prealerte_status" widget="badge" optional="show"
+                       decoration-warning="prealerte_status == 'ready_to_match'"
+                       decoration-success="prealerte_status == 'matched'"
+                       decoration-danger="prealerte_status == 'not_found'"/>
+                <field name="skybox_status" widget="badge" optional="show"
+                       decoration-info="skybox_status == 'receipt'"
+                       decoration-success="skybox_status == 'stored'"
+                       decoration-danger="skybox_status == 'canceled'"/>
+                <field name="client_ref" optional="hide"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Action Receipts -->
+    <record id="action_skybox_receipts" model="ir.actions.act_window">
+        <field name="name">Receipts</field>
+        <field name="res_model">stock.picking</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_skybox_receipts_picking_list"/>
+        <field name="domain">[('picking_type_code', '=', 'incoming'), ('skybox_status', '=', 'receipt')]</field>
+        <field name="context" eval="{'default_picking_type_id': ref('stock.picking_type_in')}"/>
+    </record>
+
+    <!-- Action Stock : receptions dont le statut est "stored" -->
+    <record id="action_skybox_stock" model="ir.actions.act_window">
+        <field name="name">Stock</field>
+        <field name="res_model">stock.picking</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_skybox_receipts_picking_list"/>
+        <field name="domain">[('picking_type_code', '=', 'incoming'), ('skybox_status', '=', 'stored')]</field>
+    </record>
+
+    <!-- Form Receipts : champs tracking (herite du form picking) -->
+    <record id="view_skybox_receipts_picking_form" model="ir.ui.view">
+        <field name="name">skybox.receipts.picking.form</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='user_id']" position="attributes">
+                <attribute name="string">Agent</attribute>
+            </xpath>
+            <xpath expr="//field[@name='location_dest_id'][@invisible=&quot;picking_type_code == 'outgoing'&quot;]" position="attributes">
+                <attribute name="string">Emplacement</attribute>
+            </xpath>
+            <xpath expr="//div[label[@for='partner_id']]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='partner_id'][@nolabel='1']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//header" position="inside">
+                <button name="action_open_store" string="Stored" type="object"
+                        class="btn-primary" invisible="skybox_status != 'receipt'"/>
+                <button name="action_open_transfer" string="Transfert" type="object"
+                        class="btn-secondary" invisible="skybox_status != 'stored'"/>
+                <field name="skybox_status" widget="statusbar"
+                       statusbar_visible="receipt,stored,canceled"/>
+            </xpath>
+            <xpath expr="//field[@name='state'][@statusbar_visible='draft,assigned,done']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='action_confirm']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='button_validate'][@class='oe_highlight']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='button_validate'][@class='o_btn_validate']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='action_see_returns']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='action_detailed_operations']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='action_next_transfer']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='do_print_picking']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='%(stock.action_report_delivery)d']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//div[@name='button_box']/button[1]" position="before">
+                <button name="action_view_history" type="object"
+                        class="oe_stat_button" icon="fa-history">
+                    <field string="Historique" name="history_count" widget="statinfo"/>
+                </button>
+            </xpath>
+            <xpath expr="//notebook" position="before">
+                <group string="Tracking" name="skybox_tracking">
+                    <group>
+                        <field name="tracking_number"/>
+                        <field name="suite_number"/>
+                        <field name="courier_id"/>
+                    </group>
+                    <group>
+                        <field name="prealerte_status"/>
+                        <field name="client_id"/>
+                        <field name="client_ref"/>
+                        <field name="bag"/>
+                        <field name="notes"/>
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Retire les actions contextuelles standard des listes de receptions -->
+    <record id="stock.action_validate_picking" model="ir.actions.server">
+        <field name="binding_model_id" eval="False"/>
+    </record>
+    <record id="stock.action_unreserve_picking" model="ir.actions.server">
+        <field name="binding_model_id" eval="False"/>
+    </record>
+    <record id="stock.action_lead_mass_mail" model="ir.actions.act_window">
+        <field name="binding_model_id" eval="False"/>
+    </record>
+
+    <!-- Historique de la reception -->
+    <record id="view_skybox_picking_history_list" model="ir.ui.view">
+        <field name="name">skybox.picking.history.list</field>
+        <field name="model">skybox.picking.history</field>
+        <field name="arch" type="xml">
+            <list string="Historique" create="0" edit="0">
+                <field name="date"/>
+                <field name="action" widget="badge"
+                       decoration-info="action == 'received'"
+                       decoration-success="action == 'stored'"
+                       decoration-warning="action == 'moved'"
+                       decoration-danger="action == 'canceled'"/>
+                <field name="user_id"/>
+                <field name="location_id"/>
+                <field name="bag_id"/>
+                <field name="note"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_picking_history_form" model="ir.ui.view">
+        <field name="name">skybox.picking.history.form</field>
+        <field name="model">skybox.picking.history</field>
+        <field name="arch" type="xml">
+            <form string="Historique">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="picking_id"/>
+                            <field name="action"/>
+                            <field name="date"/>
+                        </group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="location_id"/>
+                            <field name="bag_id"/>
+                        </group>
+                    </group>
+                    <field name="note"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Wizard Transfert (popup nouvel emplacement) -->
+    <record id="view_skybox_transfer_wizard_form" model="ir.ui.view">
+        <field name="name">skybox.transfer.wizard.form</field>
+        <field name="model">skybox.transfer.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Transfert">
+                <group>
+                    <field name="picking_id" invisible="1"/>
+                    <field name="current_location_id"/>
+                    <field name="new_location_id"/>
+                </group>
+                <footer>
+                    <button name="action_confirm" string="Transferer" type="object"
+                            class="btn-primary"/>
+                    <button string="Annuler" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Wizard Stored (popup bag + emplacement) -->
+    <record id="view_skybox_store_wizard_form" model="ir.ui.view">
+        <field name="name">skybox.store.wizard.form</field>
+        <field name="model">skybox.store.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Stored">
+                <group>
+                    <field name="picking_id" invisible="1"/>
+                    <field name="bag"/>
+                    <field name="location_dest_id"/>
+                </group>
+                <footer>
+                    <button name="action_confirm" string="Confirmer" type="object"
+                            class="btn-primary"/>
+                    <button string="Annuler" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Menu parent Orders -->
+    <menuitem id="menu_skybox_tracking"
+              name="Orders"
+              parent="menu_skybox_root"
+              sequence="15"/>
+
+    <!-- Sous-menu Receipts -->
+    <menuitem id="menu_skybox_orders_list"
+              name="Receipts"
+              parent="menu_skybox_tracking"
+              action="action_skybox_receipts"
+              sequence="10"/>
+
+    <!-- Sous-menu Stock -->
+    <menuitem id="menu_skybox_stock"
+              name="Stock"
+              parent="menu_skybox_tracking"
+              action="action_skybox_stock"
+              sequence="20"/>
+
+    <!-- Action Bags list (colis standard, renomme) -->
+    <record id="action_skybox_bags" model="ir.actions.act_window">
+        <field name="name">Bags list</field>
+        <field name="res_model">stock.quant.package</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="context">{}</field>
+    </record>
+
+    <!-- Masque le menu standard "Packages" (Colis) -->
+    <record id="stock.menu_package" model="ir.ui.menu">
+        <field name="active" eval="False"/>
+    </record>
+
+    <!-- Menu Bags list sous Configuration de skybox -->
+    <menuitem id="menu_skybox_bags"
+              name="Bags list"
+              parent="menu_skybox_configuration"
+              action="action_skybox_bags"
+              groups="base.group_user"
+              sequence="20"/>
+
+</odoo>

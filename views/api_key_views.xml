@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Liste des cles API -->
+    <record id="view_skybox_api_key_list" model="ir.ui.view">
+        <field name="name">skybox.api.key.list</field>
+        <field name="model">skybox.api.key</field>
+        <field name="arch" type="xml">
+            <list string="Cles API" decoration-muted="not active">
+                <field name="name"/>
+                <field name="api_type"/>
+                <field name="url"/>
+                <field name="create_date"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'success'"
+                       decoration-danger="state == 'failed'"
+                       decoration-muted="state == 'draft'"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Formulaire cle API -->
+    <record id="view_skybox_api_key_form" model="ir.ui.view">
+        <field name="name">skybox.api.key.form</field>
+        <field name="model">skybox.api.key</field>
+        <field name="arch" type="xml">
+            <form string="Cle API">
+                <header>
+                    <button name="action_save" string="Enregistrer"
+                            type="object" class="btn-primary"/>
+                    <button name="action_test_connectivity" string="Test connectivity"
+                            type="object" class="btn-secondary"
+                            invisible="api_type != 'api_externe'"/>
+                    <button name="action_generate_key" string="Generer la cle"
+                            type="object" class="btn-secondary"
+                            invisible="api_type == 'api_externe'"
+                            confirm="Regenerer la cle invalidera l'ancienne. Continuer ?"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,success,failed"
+                           invisible="api_type != 'api_externe'"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group string="Type">
+                            <field name="name"/>
+                            <field name="api_type" widget="radio"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+
+                    <!-- My API / Login : cle generee par Odoo -->
+                    <group invisible="api_type == 'api_externe'">
+                        <group string="Cle generee">
+                            <field name="key" widget="password_eye" readonly="1"/>
+                            <field name="last_used"/>
+                            <field name="create_date"/>
+                        </group>
+                        <div class="text-muted" colspan="2" invisible="api_type != 'my_api'">
+                            <p>
+                                Communiquez cette cle au programme externe.
+                                Cliquez sur <strong>Generer la cle</strong> pour
+                                en creer une nouvelle.
+                            </p>
+                        </div>
+                        <div class="text-muted" colspan="2" invisible="api_type != 'login'">
+                            <p>
+                                Donnez cette cle au programme externe pour qu'il
+                                authentifie les utilisateurs Odoo via
+                                <strong>POST /skybox/api/login</strong> avec
+                                <code>{"api_key": "...", "email": "...", "password": "..."}</code>.
+                                Odoo verifie l'email et le mot de passe et renvoie
+                                le resultat.
+                            </p>
+                        </div>
+                    </group>
+
+                    <!-- API externe : parametres d'appel -->
+                    <group invisible="api_type != 'api_externe'">
+                        <group string="Configuration">
+                            <field name="url" widget="url" placeholder="https://api.exemple.com/ping"/>
+                            <field name="key" widget="password_eye"/>
+                            <field name="token" widget="password_eye"/>
+                        </group>
+                        <group string="Authentification">
+                            <field name="auth_type"/>
+                            <field name="header_name" invisible="auth_type != 'header'"/>
+                            <field name="query_param" invisible="auth_type != 'query'"/>
+                        </group>
+                        <group string="Check des receptions">
+                            <field name="warehouse_code" placeholder="WH-CASA-01"/>
+                            <field name="operator_code" placeholder="ODOO-AGENT-01"/>
+                        </group>
+                        <group string="Dernier test">
+                            <field name="last_test_message" readonly="1"/>
+                            <field name="create_date"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Vue recherche : filtres Actif / Archive -->
+    <record id="view_skybox_api_key_search" model="ir.ui.view">
+        <field name="name">skybox.api.key.search</field>
+        <field name="model">skybox.api.key</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="url"/>
+                <filter name="my_api" string="My API" domain="[('api_type', '=', 'my_api')]"/>
+                <filter name="api_externe" string="API externe" domain="[('api_type', '=', 'api_externe')]"/>
+                <separator/>
+                <filter name="actif" string="Actif" domain="[('active', '=', True)]"/>
+                <filter name="inactif" string="Inactif" domain="[('active', '=', False)]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_type" string="Type d'API"
+                            context="{'group_by': 'api_type'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_skybox_api_key" model="ir.actions.act_window">
+        <field name="name">API management</field>
+        <field name="res_model">skybox.api.key</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'active_test': False}</field>
+        <field name="search_view_id" ref="view_skybox_api_key_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucune cle API pour le moment
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Configuration (a cote de Transporteurs) -->
+    <menuitem id="menu_skybox_configuration"
+              name="Configuration"
+              parent="menu_skybox_root"
+              sequence="30"/>
+
+    <!-- Sous-menu API management -->
+    <menuitem id="menu_skybox_api_management"
+              name="API management"
+              parent="menu_skybox_configuration"
+              action="action_skybox_api_key"
+              sequence="10"/>
+
+</odoo>

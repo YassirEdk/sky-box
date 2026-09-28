@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Champ Entrepot dans la fiche employe (onglet Informations professionnelles) -->
+    <record id="view_employee_form_warehouse" model="ir.ui.view">
+        <field name="name">hr.employee.form.warehouse</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='coach_id']" position="after">
+                <field name="warehouse_id" options="{'no_create': True}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Colonne Entrepot dans la liste des employes -->
+    <record id="view_employee_tree_warehouse" model="ir.ui.view">
+        <field name="name">hr.employee.tree.warehouse</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='job_id']" position="after">
+                <field name="warehouse_id" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

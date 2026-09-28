@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Categorie applicative Skybox -->
+    <record id="module_category_skybox" model="ir.module.category">
+        <field name="name">Skybox</field>
+        <field name="sequence">20</field>
+    </record>
+
+    <!-- Roles (hierarchie : Admin > Manager > Agent) -->
+    <record id="group_skybox_agent" model="res.groups">
+        <field name="name">Agent</field>
+        <field name="category_id" ref="module_category_skybox"/>
+    </record>
+
+    <record id="group_skybox_manager" model="res.groups">
+        <field name="name">Manager</field>
+        <field name="category_id" ref="module_category_skybox"/>
+        <field name="implied_ids" eval="[(4, ref('group_skybox_agent'))]"/>
+    </record>
+
+    <record id="group_skybox_admin" model="res.groups">
+        <field name="name">Admin</field>
+        <field name="category_id" ref="module_category_skybox"/>
+        <field name="implied_ids" eval="[(4, ref('group_skybox_manager'))]"/>
+    </record>
+
+</odoo>

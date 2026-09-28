@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Vue formulaire -->
+    <record id="view_skybox_prealerte_form" model="ir.ui.view">
+        <field name="name">skybox.prealerte.form</field>
+        <field name="model">skybox.prealerte</field>
+        <field name="arch" type="xml">
+            <form string="Prealerte">
+                <header>
+                    <button name="action_receive" string="Marquer Received" type="object"
+                            class="btn-primary" invisible="state != 'pending'"/>
+                    <button name="action_reset_pending" string="Remettre Pending" type="object"
+                            invisible="state != 'received'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="pending,received"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Informations transporteur">
+                            <field name="tracking_id"/>
+                            <field name="skybill"/>
+                            <field name="tracking_number"/>
+                            <field name="suite_number"/>
+                            <field name="courier_id"/>
+                            <field name="delivery_date"/>
+                        </group>
+                        <group string="Valeur">
+                            <field name="currency_id" groups="base.group_multi_currency"/>
+                            <field name="declared_value"/>
+                            <field name="line_total"/>
+                            <field name="invoice_file" filename="invoice_filename" widget="binary"/>
+                            <field name="invoice_filename" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="Client">
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="partner_ref"/>
+                        </group>
+                        <group>
+                            <field name="partner_email" widget="email"/>
+                            <field name="partner_phone" widget="phone"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Articles declares" name="items">
+                            <field name="line_ids">
+                                <list editable="bottom">
+                                    <field name="description"/>
+                                    <field name="quantity"/>
+                                    <field name="unit_value"/>
+                                    <field name="subtotal"/>
+                                    <field name="hs_code"/>
+                                    <field name="category"/>
+                                    <field name="fragile" widget="boolean_toggle"/>
+                                    <field name="notes"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Matching colis recu" name="matching">
+                            <group>
+                                <field name="matched_package_ref"/>
+                                <field name="matched_weight"/>
+                                <field name="matched_date"/>
+                                <field name="match_notes"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- Vue liste -->
+    <record id="view_skybox_prealerte_list" model="ir.ui.view">
+        <field name="name">skybox.prealerte.list</field>
+        <field name="model">skybox.prealerte</field>
+        <field name="arch" type="xml">
+            <list string="Prealertes">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="skybill"/>
+                <field name="tracking_number"/>
+                <field name="suite_number"/>
+                <field name="courier_id"/>
+                <field name="declared_value"/>
+                <field name="delivery_date"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'pending'"
+                       decoration-success="state == 'received'"/>
+                <field name="tracking_id"/>
+                <field name="currency_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Vue recherche -->
+    <record id="view_skybox_prealerte_search" model="ir.ui.view">
+        <field name="name">skybox.prealerte.search</field>
+        <field name="model">skybox.prealerte</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="tracking_number"/>
+                <field name="suite_number"/>
+                <field name="courier_id"/>
+                <filter name="pending" string="Pending" domain="[('state', '=', 'pending')]"/>
+                <filter name="received" string="Received" domain="[('state', '=', 'received')]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_courier" string="Transporteur"
+                            context="{'group_by': 'courier_id'}"/>
+                    <filter name="group_state" string="Statut"
+                            context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Vue kanban -->
+    <record id="view_skybox_prealerte_kanban" model="ir.ui.view">
+        <field name="name">skybox.prealerte.kanban</field>
+        <field name="model">skybox.prealerte</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" class="o_kanban_small_column"
+                    records_draggable="1" quick_create="false"
+                    group_create="false" group_delete="false" group_edit="false">
+                <field name="name"/>
+                <field name="state"/>
+                <field name="tracking_id"/>
+                <field name="tracking_number"/>
+                <field name="suite_number"/>
+                <field name="courier_id"/>
+                <field name="declared_value"/>
+                <field name="line_total"/>
+                <field name="delivery_date"/>
+                <field name="currency_id"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <t t-set="stateColor"
+                           t-value="{'pending': 'warning', 'received': 'success'}[record.state.raw_value]"/>
+                        <div t-attf-class="oe_kanban_card oe_kanban_global_click o_skybox_card o_skybox_card--#{stateColor}">
+                            <div class="o_skybox_card_head">
+                                <div class="o_skybox_card_ref">
+                                    <span class="o_skybox_ref"><field name="name"/></span>
+                                    <small t-if="record.tracking_id.raw_value" class="o_skybox_seq">
+                                        <i class="fa fa-hashtag me-1" title="Tracking sequence"/>
+                                        <field name="tracking_id"/>
+                                    </small>
+                                </div>
+                                <span t-attf-class="badge rounded-pill text-bg-#{stateColor}">
+                                    <field name="state"/>
+                                </span>
+                            </div>
+                            <div class="o_skybox_card_body">
+                                <div t-if="record.tracking_number.raw_value" class="o_skybox_line text-truncate">
+                                    <i class="fa fa-truck o_skybox_ico" title="Numero de tracking"/>
+                                    <field name="tracking_number"/>
+                                </div>
+                                <div t-if="record.suite_number.raw_value" class="o_skybox_line text-truncate">
+                                    <i class="fa fa-user o_skybox_ico" title="Suite"/>
+                                    <field name="suite_number"/>
+                                </div>
+                                <div t-if="record.courier_id.raw_value" class="o_skybox_line text-truncate">
+                                    <i class="fa fa-building o_skybox_ico" title="Transporteur"/>
+                                    <field name="courier_id"/>
+                                </div>
+                            </div>
+                            <div class="o_skybox_card_foot">
+                                <span t-if="record.delivery_date.raw_value" class="text-muted">
+                                    <i class="fa fa-calendar me-1" title="Date estimee"/>
+                                    <field name="delivery_date"/>
+                                </span>
+                                <span t-else=""/>
+                                <strong class="o_skybox_amount">
+                                    <field name="line_total" widget="monetary"
+                                           options="{'currency_field': 'currency_id'}"/>
+                                </strong>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_skybox_prealerte" model="ir.actions.act_window">
+        <field name="name">Les prealertes</field>
+        <field name="res_model">skybox.prealerte</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucune prealerte pour le moment
+            </p>
+        </field>
+    </record>
+
+    <!-- Menus -->
+    <menuitem id="menu_skybox_root"
+              name="Skybox"
+              web_icon="skybox,static/description/icon.png"
+              sequence="10"/>
+
+    <menuitem id="menu_skybox_prealerte"
+              name="Gestion des prealertes"
+              parent="menu_skybox_root"
+              action="action_skybox_prealerte"
+              sequence="10"/>
+
+</odoo>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Ajout du champ Entrepot dans le formulaire utilisateur -->
+    <record id="view_users_form_warehouse" model="ir.ui.view">
+        <field name="name">res.users.form.warehouse</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <!-- Onglet Preferences : apres l'action d'accueil (champ unique) -->
+            <xpath expr="//field[@name='action_id']" position="after">
+                <field name="warehouse_id"
+                       options="{'no_create': True}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Ajout de la colonne Entrepot dans la liste des utilisateurs -->
+    <record id="view_users_tree_warehouse" model="ir.ui.view">
+        <field name="name">res.users.tree.warehouse</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='login']" position="after">
+                <field name="warehouse_id" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

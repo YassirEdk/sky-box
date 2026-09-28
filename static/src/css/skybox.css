@@ -1,0 +1,72 @@
+/* Titre du fil d'ariane (a cote du bouton Nouveau) : espace uniquement */
+.o_breadcrumb .o_last_breadcrumb_item {
+    margin-left: 16px;
+}
+
+/* ============ Cartes kanban Prealerte ============ */
+.o_skybox_card {
+    padding: 10px 12px 10px 14px;
+    border-radius: 8px;
+    border-left: 4px solid var(--bs-secondary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.o_skybox_card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+}
+
+.o_skybox_card--secondary { border-left-color: var(--bs-secondary); }
+.o_skybox_card--info      { border-left-color: var(--bs-info); }
+.o_skybox_card--warning   { border-left-color: var(--bs-warning); }
+.o_skybox_card--success   { border-left-color: var(--bs-success); }
+.o_skybox_card--danger    { border-left-color: var(--bs-danger); }
+
+.o_skybox_card_head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.o_skybox_ref {
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.o_skybox_seq {
+    display: block;
+    color: var(--bs-secondary);
+    font-size: 11px;
+    margin-top: 1px;
+}
+
+.o_skybox_card_body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 13px;
+}
+
+.o_skybox_line .o_skybox_ico {
+    width: 16px;
+    text-align: center;
+    margin-right: 6px;
+    color: var(--bs-secondary);
+}
+
+.o_skybox_card_foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    font-size: 12px;
+}
+
+.o_skybox_amount {
+    font-size: 14px;
+}

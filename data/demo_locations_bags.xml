@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- 6 emplacements (sous WH/Stock) -->
+        <record id="loc_skybox_1" model="stock.location">
+            <field name="name">Zone A1</field>
+            <field name="usage">internal</field>
+            <field name="location_id" ref="stock.stock_location_stock"/>
+        </record>
+        <record id="loc_skybox_2" model="stock.location">
+            <field name="name">Zone A2</field>
+            <field name="usage">internal</field>
+            <field name="location_id" ref="stock.stock_location_stock"/>
+        </record>
+        <record id="loc_skybox_3" model="stock.location">
+            <field name="name">Zone B1</field>
+            <field name="usage">internal</field>
+            <field name="location_id" ref="stock.stock_location_stock"/>
+        </record>
+        <record id="loc_skybox_4" model="stock.location">
+            <field name="name">Zone B2</field>
+            <field name="usage">internal</field>
+            <field name="location_id" ref="stock.stock_location_stock"/>
+        </record>
+        <record id="loc_skybox_5" model="stock.location">
+            <field name="name">Zone C1</field>
+            <field name="usage">internal</field>
+            <field name="location_id" ref="stock.stock_location_stock"/>
+        </record>
+        <record id="loc_skybox_6" model="stock.location">
+            <field name="name">Zone C2</field>
+            <field name="usage">internal</field>
+            <field name="location_id" ref="stock.stock_location_stock"/>
+        </record>
+
+        <!-- 6 bags (colis) -->
+        <record id="bag_skybox_1" model="stock.quant.package">
+            <field name="name">BAG001</field>
+        </record>
+        <record id="bag_skybox_2" model="stock.quant.package">
+            <field name="name">BAG002</field>
+        </record>
+        <record id="bag_skybox_3" model="stock.quant.package">
+            <field name="name">BAG003</field>
+        </record>
+        <record id="bag_skybox_4" model="stock.quant.package">
+            <field name="name">BAG004</field>
+        </record>
+        <record id="bag_skybox_5" model="stock.quant.package">
+            <field name="name">BAG005</field>
+        </record>
+        <record id="bag_skybox_6" model="stock.quant.package">
+            <field name="name">BAG006</field>
+        </record>
+
+    </data>
+</odoo>
