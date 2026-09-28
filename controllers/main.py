@@ -139,6 +139,62 @@ class SkyboxLoginController(http.Controller):
             rec.active = False
         return {'success': True}
 
+    def _agent(self, kwargs):
+        """Retourne (utilisateur du jeton, None) ou (None, erreur)."""
+        token = request.env['skybox.access.token']._validate(
+            self._bearer_token(kwargs))
+        if not token:
+            return None, {'success': False, 'error': 'invalid_token'}
+        user = token.user_id
+        if not self._user_role(user):
+            return None, {'success': False, 'error': 'access_denied'}
+        return user, None
+
+    def _agent_env(self, user):
+        """Environnement "agent" : sudo pour les droits, mais env.user = agent
+        (createur des enregistrements + agent dans l'historique)."""
+        return request.env(user=user.id, su=True)
+
+    def _find_bag(self, env, kwargs):
+        """Bag (obligatoire) par id ("bag_id") ou par nom ("bag").
+        Retourne (bag, None) ou (None, erreur)."""
+        Package = env['stock.quant.package']
+        bag_id = kwargs.get('bag_id')
+        bag_name = (kwargs.get('bag') or '').strip()
+        if not bag_id and not bag_name:
+            return None, {'success': False, 'error': 'missing_bag'}
+        if bag_id:
+            bag = Package.browse(int(bag_id)).exists()
+        else:
+            bag = Package.search([('name', '=ilike', bag_name)], limit=1)
+        if not bag:
+            return None, {'success': False, 'error': 'bag_not_found'}
+        return bag, None
+
+    def _find_location(self, env, kwargs):
+        """Emplacement interne (obligatoire) par id ("location_id") ou par
+        code-barres / nom complet / nom ("location").
+        Retourne (emplacement, None) ou (None, erreur)."""
+        Location = env['stock.location']
+        loc_id = kwargs.get('location_id')
+        loc_name = (kwargs.get('location') or '').strip()
+        if not loc_id and not loc_name:
+            return None, {'success': False, 'error': 'missing_location'}
+        internal = [('usage', '=', 'internal')]
+        if loc_id:
+            location = Location.search(
+                internal + [('id', '=', int(loc_id))], limit=1)
+        else:
+            location = Location.browse()
+            for field in ('barcode', 'complete_name', 'name'):
+                location = Location.search(
+                    internal + [(field, '=ilike', loc_name)], limit=1)
+                if location:
+                    break
+        if not location:
+            return None, {'success': False, 'error': 'location_not_found'}
+        return location, None
+
     def _receipt_picking_type(self, user):
         """Type d'operation Reception de l'entrepot de l'agent."""
         env = request.env
@@ -167,36 +223,20 @@ class SkyboxLoginController(http.Controller):
         L'agent est l'utilisateur du jeton ; la reception et le bag sont
         enregistres dans l'historique.
         """
-        token = request.env['skybox.access.token']._validate(
-            self._bearer_token(kwargs))
-        if not token:
-            return {'success': False, 'error': 'invalid_token'}
-        user = token.user_id
-        if not self._user_role(user):
-            return {'success': False, 'error': 'access_denied'}
+        user, error = self._agent(kwargs)
+        if error:
+            return error
 
         tracking_number = (kwargs.get('tracking_number') or '').strip()
         if not tracking_number:
             return {'success': False, 'error': 'missing_tracking_number'}
 
-        # Environnement "agent" : sudo pour les droits, mais env.user = agent
-        # (createur de la reception + agent dans l'historique).
-        env = request.env(user=user.id, su=True)
+        env = self._agent_env(user)
         Picking = env['stock.picking']
 
-        # Bag (obligatoire) : par id ou par nom.
-        Package = env['stock.quant.package']
-        bag = Package.browse()
-        bag_id = kwargs.get('bag_id')
-        bag_name = (kwargs.get('bag') or '').strip()
-        if bag_id:
-            bag = Package.browse(int(bag_id)).exists()
-        elif bag_name:
-            bag = Package.search([('name', '=ilike', bag_name)], limit=1)
-        if not bag_id and not bag_name:
-            return {'success': False, 'error': 'missing_bag'}
-        if not bag:
-            return {'success': False, 'error': 'bag_not_found'}
+        bag, error = self._find_bag(env, kwargs)
+        if error:
+            return error
 
         # Doublon : tracking deja recu (non annule).
         existing = Picking.search([
@@ -239,4 +279,66 @@ class SkyboxLoginController(http.Controller):
             'agent_id': user.id,
             'warehouse': picking_type.warehouse_id.name or None,
             'date': fields.Datetime.to_string(history.date),
+        }
+
+    @http.route('/skybox/api/store', type='json', auth='public',
+                methods=['POST'], csrf=False)
+    def api_store(self, **kwargs):
+        """Stocke les commandes d'un bag dans un emplacement (app mobile).
+
+        En-tete: Authorization: Bearer <access_token>
+        Corps JSON attendu:
+            {"tracking_number": "...", "bag": "BAG001",
+             "location": "WH/Stock/Zone A1"}
+        La commande (encore dans le bag, statut Receipt) passe en Stored
+        dans l'emplacement ; enregistree dans l'historique.
+        """
+        user, error = self._agent(kwargs)
+        if error:
+            return error
+
+        tracking_number = (kwargs.get('tracking_number') or '').strip()
+        if not tracking_number:
+            return {'success': False, 'error': 'missing_tracking_number'}
+
+        env = self._agent_env(user)
+        bag, error = self._find_bag(env, kwargs)
+        if error:
+            return error
+        location, error = self._find_location(env, kwargs)
+        if error:
+            return error
+
+        pickings = env['stock.picking'].search([
+            ('picking_type_code', '=', 'incoming'),
+            ('bag', '=', bag.id),
+            ('skybox_status', '=', 'receipt'),
+            ('tracking_number', '=ilike', tracking_number),
+        ])
+        if not pickings:
+            return {'success': False, 'error': 'order_not_in_bag'}
+
+        pickings.write({
+            'location_dest_id': location.id,
+            'skybox_status': 'stored',
+        })
+        pickings._log_history(
+            'stored', location=location, bag=bag,
+            note="Stocke via l'app mobile")
+        return {
+            'success': True,
+            'bag': bag.name,
+            'bag_id': bag.id,
+            'location': location.complete_name,
+            'location_id': location.id,
+            'agent': user.name,
+            'agent_id': user.id,
+            'date': fields.Datetime.to_string(fields.Datetime.now()),
+            'count': len(pickings),
+            'orders': [{
+                'picking_id': p.id,
+                'reference': p.name,
+                'tracking_number': p.tracking_number,
+                'client': p.client_id.name or None,
+            } for p in pickings],
         }
