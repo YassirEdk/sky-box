@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Liste Entrepots : affiche l'ID -->
+    <record id="view_skybox_warehouse_tree" model="ir.ui.view">
+        <field name="name">skybox.stock.warehouse.list</field>
+        <field name="model">stock.warehouse</field>
+        <field name="inherit_id" ref="stock.view_warehouse_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='name']" position="after">
+                <field name="id" string="ID" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

@@ -13,3 +13,4 @@ from . import login_attempt
 from . import tracking
 from . import check_tn_wizard
 from . import prealerte
+from . import stock_location
