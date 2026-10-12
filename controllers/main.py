@@ -142,7 +142,7 @@ class SkyboxLoginController(http.Controller):
         rec = request.env['skybox.access.token'].sudo().search(
             [('token', '=', raw)], limit=1)
         if rec and rec.active:
-            rec.active = False
+            rec.write({'active': False, 'last_used': fields.Datetime.now()})
             request.env['skybox.login.log']._log(
                 rec.user_id, 'logout', 'mobile', note="Deconnexion depuis l'app")
             if self._user_role(rec.user_id) == 'picker':

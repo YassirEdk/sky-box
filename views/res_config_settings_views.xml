@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="res_config_settings_view_form_skybox" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.skybox</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="Skybox" string="Skybox" name="skybox">
+                    <block title="Pickers" name="skybox_pickers">
+                        <setting string="Redistribution des ordres"
+                                 help="Delai avant de redistribuer aux autres pickers les ordres d'un picker deconnecte ou inactif. 0 = immediat.">
+                            <field name="skybox_picker_reassign_delay" class="o_light_label" style="width: 6rem;"/>
+                            <span class="ms-1">minutes</span>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_skybox_config_settings" model="ir.actions.act_window">
+        <field name="name">Parametres</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module': 'skybox', 'bin_size': False}</field>
+    </record>
+
+    <menuitem id="menu_skybox_settings"
+              name="Parametres"
+              parent="menu_skybox_configuration"
+              action="action_skybox_config_settings"
+              sequence="1"/>
+
+</odoo>

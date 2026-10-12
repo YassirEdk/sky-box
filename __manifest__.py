@@ -35,6 +35,7 @@ entrepots disponibles dans le module Inventory.
         'views/skybox_parcel_views.xml',
         'views/preparation_order_views.xml',
         'views/past_order_views.xml',
+        'views/res_config_settings_views.xml',
         'views/picker_log_views.xml',
         'data/preparation_order_data.xml',
     ],

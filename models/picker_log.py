@@ -17,6 +17,7 @@ class SkyboxPickerLog(models.Model):
             ('login', "Connexion"),
             ('logout', "Deconnexion"),
             ('inactive', "Inactif / sorti du cycle"),
+            ('reassigned', "Ordres redistribues"),
         ],
         string="Evenement", required=True)
     order_ids = fields.Many2many(

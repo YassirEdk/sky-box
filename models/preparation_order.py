@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import requests
 
@@ -30,6 +30,9 @@ STATUS_PATH = "/v1/integrations/wms/preparation-orders/%s/status"
 PICKER_CURSOR = 'skybox.picker_cursor'
 # Un picker sans activite depuis ce delai sort du cycle.
 PICKER_IDLE_MINUTES = 5
+# Delai avant redistribution des ordres d'un picker sorti du cycle.
+REASSIGN_DELAY_PARAM = 'skybox.picker_reassign_delay'
+DEFAULT_REASSIGN_DELAY = 60
 # Ordres encore "a faire", redistribues quand leur picker sort du cycle.
 REASSIGN_STATES = ('new', 'picking', 'picked', 'packed', 'ready')
 
@@ -190,10 +193,42 @@ class SkyboxPreparationOrder(models.Model):
         return [('state', 'in', REASSIGN_STATES)]
 
     @api.model
-    def _rebalance_pickers(self, event='inactive'):
+    def _reassign_delay(self):
+        """Delai (minutes) avant de redistribuer les ordres d'un picker sorti
+        du cycle (Parametres > Skybox). 0 = immediatement."""
+        value = self.env['ir.config_parameter'].sudo().get_param(
+            REASSIGN_DELAY_PARAM, DEFAULT_REASSIGN_DELAY)
+        try:
+            return max(int(value), 0)
+        except (TypeError, ValueError):
+            return DEFAULT_REASSIGN_DELAY
+
+    @api.model
+    def _picker_last_seen(self, users):
+        """Derniere activite de chaque picker dans l'app (dernier appel API ou
+        deconnexion) : {user_id: datetime}."""
+        tokens = self.env['skybox.access.token'].sudo().with_context(
+            active_test=False).search([('user_id', 'in', users.ids)])
+        seen = {}
+        for token in tokens:
+            if token.last_used and token.last_used > seen.get(token.user_id.id, datetime.min):
+                seen[token.user_id.id] = token.last_used
+        return seen
+
+    @api.model
+    def _picker_reassign_at(self, users):
+        """Date a partir de laquelle les ordres de chaque picker seront
+        redistribues : {user_id: datetime ou False}."""
+        delay = timedelta(minutes=self._reassign_delay())
+        seen = self._picker_last_seen(users)
+        return {uid: (last + delay) for uid, last in seen.items()}
+
+    @api.model
+    def _rebalance_pickers(self):
         """Redistribue a tour de role :
-        - les ordres ouverts des pickers sortis du cycle (deconnectes/inactifs),
-        - les ordres ouverts sans picker.
+        - les ordres sans picker (tout de suite),
+        - les ordres des pickers sortis du cycle depuis plus que le delai
+          configure (Parametres > Skybox).
         Ne fait rien si aucun picker n'est connecte (les ordres restent)."""
         cycle = self._picker_cycle()
         if not cycle:
@@ -202,16 +237,20 @@ class SkyboxPreparationOrder(models.Model):
         orders = self.sudo().search(self._open_orders_domain() + [
             '|', ('agent_id', '=', False), ('agent_id', 'not in', connected),
         ], order='id')
+        now = fields.Datetime.now()
+        reassign_at = self._picker_reassign_at(orders.agent_id)
         moved = {}
         for order in orders:
             old = order.agent_id
+            if old and reassign_at.get(old.id, now) > now:
+                continue  # Delai pas encore ecoule : il peut encore revenir.
             new = self._next_picker(cycle)
             order.agent_id = new
             if old:
                 moved.setdefault(old, []).append((order, new))
         Log = self.env['skybox.picker.log'].sudo()
         for old, items in moved.items():
-            Log._log(old, event, self.browse([o.id for o, _n in items]),
+            Log._log(old, 'reassigned', self.browse([o.id for o, _n in items]),
                      note=self._moved_note(items))
 
     @api.model
@@ -221,12 +260,12 @@ class SkyboxPreparationOrder(models.Model):
 
     @api.model
     def _picker_logout(self, user):
-        """Deconnexion d'un picker : journal + redistribution de ses ordres."""
+        """Deconnexion d'un picker : journal ; ses ordres sont redistribues
+        apres le delai configure s'il ne revient pas."""
         Log = self.env['skybox.picker.log'].sudo()
         orders = self.sudo().search(
             self._open_orders_domain() + [('agent_id', '=', user.id)], order='id')
-        cycle = self._picker_cycle()
-        if user.id in [t.user_id.id for t in cycle]:
+        if user.id in [t.user_id.id for t in self._picker_cycle()]:
             # Encore connecte sur un autre appareil : il garde ses ordres.
             Log._log(user, 'logout', orders,
                      note="Encore connecte sur un autre appareil, ordres conserves.")
@@ -234,15 +273,18 @@ class SkyboxPreparationOrder(models.Model):
         if not orders:
             Log._log(user, 'logout', orders)
             return
-        if not cycle:
-            Log._log(user, 'logout', orders,
-                     note="Aucun autre picker connecte : ordres en attente, "
-                          "redistribues des qu'un picker se connecte.")
-            return
-        items = [(order, self._next_picker(cycle)) for order in orders]
-        for order, new in items:
-            order.agent_id = new
-        Log._log(user, 'logout', orders, note=self._moved_note(items))
+        delay = self._reassign_delay()
+        if delay:
+            when = fields.Datetime.context_timestamp(
+                self, fields.Datetime.now() + timedelta(minutes=delay))
+            note = ("Deconnecte avec %s ordre(s) actif(s) : redistribues aux "
+                    "autres pickers a partir de %s (delai %s min) s'il ne se "
+                    "reconnecte pas." % (len(orders), when.strftime('%d/%m/%Y %H:%M'), delay))
+        else:
+            note = "Deconnecte avec %s ordre(s) actif(s) : redistribution immediate." % len(orders)
+        Log._log(user, 'logout', orders, note=note)
+        if not delay:
+            self._rebalance_pickers()
 
     @api.model
     def _picker_login(self, user):

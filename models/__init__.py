@@ -21,3 +21,4 @@ from . import preparation_order
 from . import picker_log
 from . import login_log
 from . import colis_history
+from . import res_config_settings

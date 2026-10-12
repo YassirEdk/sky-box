@@ -18,6 +18,8 @@ class ResUsers(models.Model):
         string="Dans le cycle", compute='_compute_skybox_picker')
     skybox_open_order_count = fields.Integer(
         string="Ordres actifs", compute='_compute_skybox_picker')
+    skybox_reassign_at = fields.Datetime(
+        string="Redistribution prevue", compute='_compute_skybox_picker')
     skybox_picker_log_ids = fields.One2many(
         comodel_name='skybox.picker.log', inverse_name='user_id',
         string="Historique picker")
@@ -55,7 +57,9 @@ class ResUsers(models.Model):
         agent = self.env.ref('skybox.group_skybox_agent', raise_if_not_found=False)
         Order = self.env['skybox.preparation.order'].sudo()
         connected = {t.user_id.id for t in Order._picker_cycle()}
+        reassign_at = Order._picker_reassign_at(self._origin)
         for user in self:
+            user.skybox_reassign_at = reassign_at.get(user._origin.id, False)
             groups = user.groups_id
             user.is_skybox_picker = bool(
                 picker and picker in groups and not (agent and agent in groups))

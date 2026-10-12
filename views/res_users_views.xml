@@ -28,8 +28,12 @@
                     <i class="fa fa-exclamation-triangle me-1" title="Alerte"/>
                     Ce picker est deconnecte avec
                     <field name="skybox_open_order_count" class="d-inline fw-bold"/>
-                    ordre(s) de preparation actif(s) affecte(s) : ils seront
-                    redistribues des qu'un autre picker sera connecte.
+                    ordre(s) de preparation actif(s) affecte(s).
+                    <span invisible="not skybox_reassign_at">
+                        S'il ne se reconnecte pas, ils seront redistribues aux autres
+                        pickers a partir du
+                        <field name="skybox_reassign_at" class="d-inline fw-bold"/>.
+                    </span>
                 </div>
             </xpath>
             <xpath expr="//notebook" position="inside">
@@ -52,7 +56,7 @@
                             <field name="date"/>
                             <field name="event" widget="badge"
                                    decoration-success="event == 'login'"
-                                   decoration-warning="event in ('logout', 'inactive') and warning"/>
+                                   decoration-warning="event in ('logout', 'inactive', 'reassigned') and warning"/>
                             <field name="order_count"/>
                             <field name="order_ids" widget="many2many_tags"/>
                             <field name="note"/>

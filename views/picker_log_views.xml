@@ -11,7 +11,7 @@
                 <field name="user_id" widget="many2one_avatar_user"/>
                 <field name="event" widget="badge"
                        decoration-success="event == 'login'"
-                       decoration-warning="event in ('logout', 'inactive') and warning"/>
+                       decoration-warning="event in ('logout', 'inactive', 'reassigned') and warning"/>
                 <field name="order_count"/>
                 <field name="order_ids" widget="many2many_tags"/>
                 <field name="note"/>
@@ -31,6 +31,7 @@
                 <filter name="logins" string="Connexions" domain="[('event', '=', 'login')]"/>
                 <filter name="logouts" string="Deconnexions" domain="[('event', '=', 'logout')]"/>
                 <filter name="inactive" string="Inactifs" domain="[('event', '=', 'inactive')]"/>
+                <filter name="reassigned" string="Redistributions" domain="[('event', '=', 'reassigned')]"/>
                 <group expand="0" string="Regrouper par">
                     <filter name="group_user" string="Picker" context="{'group_by': 'user_id'}"/>
                     <filter name="group_event" string="Evenement" context="{'group_by': 'event'}"/>
