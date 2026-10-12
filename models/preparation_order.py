@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import requests
 
@@ -35,6 +35,9 @@ REASSIGN_DELAY_PARAM = 'skybox.picker_reassign_delay'
 DEFAULT_REASSIGN_DELAY = 60
 # Ordres encore "a faire", redistribues quand leur picker sort du cycle.
 REASSIGN_STATES = ('new', 'picking', 'picked', 'packed', 'ready')
+# Ordres qu'on peut deplacer pour equilibrer la charge (colis pas encore
+# tous preleves). Les Nouveau partent en premier, puis les Picking.
+BALANCE_STATES = ('new', 'picking')
 
 
 class SkyboxPreparationOrder(models.Model):
@@ -204,24 +207,13 @@ class SkyboxPreparationOrder(models.Model):
             return DEFAULT_REASSIGN_DELAY
 
     @api.model
-    def _picker_last_seen(self, users):
-        """Derniere activite de chaque picker dans l'app (dernier appel API ou
-        deconnexion) : {user_id: datetime}."""
-        tokens = self.env['skybox.access.token'].sudo().with_context(
-            active_test=False).search([('user_id', 'in', users.ids)])
-        seen = {}
-        for token in tokens:
-            if token.last_used and token.last_used > seen.get(token.user_id.id, datetime.min):
-                seen[token.user_id.id] = token.last_used
-        return seen
-
-    @api.model
     def _picker_reassign_at(self, users):
-        """Date a partir de laquelle les ordres de chaque picker seront
-        redistribues : {user_id: datetime ou False}."""
+        """Date a partir de laquelle les ordres de chaque picker sorti du
+        cycle seront redistribues : {user_id: datetime}. Le delai compte a
+        partir du moment ou il a quitte le cycle (deconnexion / inactivite)."""
         delay = timedelta(minutes=self._reassign_delay())
-        seen = self._picker_last_seen(users)
-        return {uid: (last + delay) for uid, last in seen.items()}
+        return {user.id: user.skybox_left_cycle_at + delay
+                for user in users.sudo() if user.skybox_left_cycle_at}
 
     @api.model
     def _rebalance_pickers(self):
@@ -234,10 +226,20 @@ class SkyboxPreparationOrder(models.Model):
         if not cycle:
             return
         connected = [t.user_id.id for t in cycle]
+        # Revenus dans le cycle (activite reprise sans nouvelle connexion) :
+        # le delai en cours est annule.
+        back = self.env['res.users'].sudo().browse(connected).filtered('skybox_left_cycle_at')
+        if back:
+            back.write({'skybox_left_cycle_at': False})
         orders = self.sudo().search(self._open_orders_domain() + [
             '|', ('agent_id', '=', False), ('agent_id', 'not in', connected),
         ], order='id')
         now = fields.Datetime.now()
+        # Picker absent sans date de sortie (inactif, ou ordres affectes a la
+        # main) : le delai demarre maintenant.
+        absent = orders.agent_id.sudo().filtered(lambda u: not u.skybox_left_cycle_at)
+        if absent:
+            absent.write({'skybox_left_cycle_at': now})
         reassign_at = self._picker_reassign_at(orders.agent_id)
         moved = {}
         for order in orders:
@@ -252,6 +254,47 @@ class SkyboxPreparationOrder(models.Model):
         for old, items in moved.items():
             Log._log(old, 'reassigned', self.browse([o.id for o, _n in items]),
                      note=self._moved_note(items))
+        self._even_out_pickers(cycle)
+
+    @api.model
+    def _even_out_pickers(self, cycle):
+        """Equilibre la charge entre les pickers connectes : tant qu'un picker
+        a au moins 2 ordres ouverts de plus qu'un autre, on lui retire un
+        ordre Nouveau (sinon Picking), le plus recent, pour le donner au
+        moins charge. Les ordres Picked / Packed / Pret ne bougent pas.
+        Ex. : 5 ordres en attente, A se connecte -> A a 5 ; B se connecte ->
+        A 3, B 2 ; C se connecte -> A 2, B 2, C 1."""
+        if len(cycle) < 2:
+            return
+        users = [t.user_id for t in cycle]
+        orders = self.sudo().search(self._open_orders_domain() + [
+            ('agent_id', 'in', [u.id for u in users])], order='id')
+        load = {u.id: orders.filtered(lambda o, u=u: o.agent_id == u) for u in users}
+        moved = {}
+        while True:
+            # Ordre du cycle en cas d'egalite : le premier connecte recoit.
+            low = min(users, key=lambda u: len(load[u.id]))
+            high = max(users, key=lambda u: len(load[u.id]))
+            if len(load[high.id]) - len(load[low.id]) < 2:
+                break
+            movable = (load[high.id].filtered(lambda o: o.state == 'new')
+                       or load[high.id].filtered(lambda o: o.state in BALANCE_STATES))
+            if not movable:
+                # Ce picker n'a que des ordres avances : on ne les touche pas.
+                users.remove(high)
+                if len(users) < 2:
+                    break
+                continue
+            order = movable[-1]
+            order.agent_id = low
+            load[high.id] -= order
+            load[low.id] |= order
+            moved.setdefault(high, []).append((order, low))
+        Log = self.env['skybox.picker.log'].sudo()
+        for old, items in moved.items():
+            Log._log(old, 'balanced', self.browse([o.id for o, _n in items]),
+                     note="Reequilibrage : " + ", ".join(
+                         "%s -> %s" % (o.name, n.name) for o, n in items))
 
     @api.model
     def _moved_note(self, items):
@@ -270,6 +313,7 @@ class SkyboxPreparationOrder(models.Model):
             Log._log(user, 'logout', orders,
                      note="Encore connecte sur un autre appareil, ordres conserves.")
             return
+        user.sudo().skybox_left_cycle_at = fields.Datetime.now()
         if not orders:
             Log._log(user, 'logout', orders)
             return
@@ -289,6 +333,8 @@ class SkyboxPreparationOrder(models.Model):
     @api.model
     def _picker_login(self, user):
         """Connexion d'un picker : journal + reprise des ordres en attente."""
+        # De retour dans le cycle : il garde ses ordres, le delai est annule.
+        user.sudo().skybox_left_cycle_at = False
         self.env['skybox.picker.log'].sudo()._log(user, 'login')
         self._rebalance_pickers()
 

@@ -18,6 +18,10 @@ class ResUsers(models.Model):
         string="Dans le cycle", compute='_compute_skybox_picker')
     skybox_open_order_count = fields.Integer(
         string="Ordres actifs", compute='_compute_skybox_picker')
+    skybox_left_cycle_at = fields.Datetime(
+        string="Sorti du cycle le", readonly=True, copy=False,
+        help="Deconnexion / inactivite du picker. Ses ordres sont redistribues "
+             "apres le delai configure, sauf s'il se reconnecte avant.")
     skybox_reassign_at = fields.Datetime(
         string="Redistribution prevue", compute='_compute_skybox_picker')
     skybox_picker_log_ids = fields.One2many(

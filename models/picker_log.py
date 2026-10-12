@@ -18,6 +18,7 @@ class SkyboxPickerLog(models.Model):
             ('logout', "Deconnexion"),
             ('inactive', "Inactif / sorti du cycle"),
             ('reassigned', "Ordres redistribues"),
+            ('balanced', "Reequilibrage"),
         ],
         string="Evenement", required=True)
     order_ids = fields.Many2many(
@@ -35,6 +36,6 @@ class SkyboxPickerLog(models.Model):
             'event': event,
             'order_ids': [(6, 0, orders.ids)],
             'order_count': len(orders),
-            'warning': event != 'login' and bool(orders),
+            'warning': event not in ('login', 'balanced') and bool(orders),
             'note': note,
         })

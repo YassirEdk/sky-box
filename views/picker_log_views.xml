@@ -32,6 +32,7 @@
                 <filter name="logouts" string="Deconnexions" domain="[('event', '=', 'logout')]"/>
                 <filter name="inactive" string="Inactifs" domain="[('event', '=', 'inactive')]"/>
                 <filter name="reassigned" string="Redistributions" domain="[('event', '=', 'reassigned')]"/>
+                <filter name="balanced" string="Reequilibrages" domain="[('event', '=', 'balanced')]"/>
                 <group expand="0" string="Regrouper par">
                     <filter name="group_user" string="Picker" context="{'group_by': 'user_id'}"/>
                     <filter name="group_event" string="Evenement" context="{'group_by': 'event'}"/>
