@@ -24,14 +24,47 @@ export class PasswordEyeField extends CharField {
         if (!value) {
             return;
         }
+        // navigator.clipboard n'existe qu'en HTTPS (ou localhost) : sur un
+        // serveur en http, on passe par une zone de texte temporaire.
+        let copied = false;
         try {
-            await navigator.clipboard.writeText(value);
-            this.notification.add(_t("Cle copiee"), { type: "success" });
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(value);
+                copied = true;
+            }
         } catch {
+            copied = false;
+        }
+        if (!copied) {
+            copied = this.legacyCopy(value);
+        }
+        if (copied) {
+            this.notification.add(_t("Cle copiee"), { type: "success" });
+        } else {
             this.notification.add(_t("Impossible de copier la cle"), {
                 type: "danger",
             });
         }
+    }
+
+    legacyCopy(value) {
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.top = "-1000px";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        textarea.setSelectionRange(0, value.length);
+        let ok = false;
+        try {
+            ok = document.execCommand("copy");
+        } catch {
+            ok = false;
+        }
+        document.body.removeChild(textarea);
+        return ok;
     }
 
     get displayValue() {
