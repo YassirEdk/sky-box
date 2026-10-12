@@ -115,3 +115,107 @@
     font-size: 24px;
     font-weight: 700;
 }
+
+/* ============ Pop-up historique colis (timeline) ============ */
+.o_skybox_tl_header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 4px 0 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.o_skybox_tl_header_icon {
+    flex: 0 0 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    background: rgba(var(--bs-primary-rgb), 0.12);
+    color: var(--bs-primary);
+}
+
+.o_skybox_timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 4px;
+    position: relative;
+}
+
+.o_skybox_timeline::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 19px;
+    width: 2px;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.o_skybox_tl_item {
+    --tl-color: var(--bs-secondary);
+    position: relative;
+    display: flex;
+    gap: 14px;
+    padding-bottom: 14px;
+}
+
+.o_skybox_tl_item--prealerte { --tl-color: var(--bs-warning); }
+.o_skybox_tl_item--reception { --tl-color: var(--bs-info); }
+.o_skybox_tl_item--parcel    { --tl-color: var(--bs-primary); }
+.o_skybox_tl_item--event     { --tl-color: var(--bs-secondary); }
+.o_skybox_tl_item--order     { --tl-color: #7c3aed; }
+.o_skybox_tl_item--done      { --tl-color: var(--bs-success); }
+
+.o_skybox_tl_dot {
+    position: relative;
+    z-index: 1;
+    flex: 0 0 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #fff;
+    background: var(--tl-color);
+    box-shadow: 0 0 0 4px var(--bs-body-bg, #fff);
+}
+
+.o_skybox_tl_body {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border-left: 3px solid var(--tl-color);
+    background: rgba(0, 0, 0, 0.025);
+}
+
+.o_skybox_tl_head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.o_skybox_tl_date {
+    font-size: 12px;
+    color: var(--bs-secondary);
+    white-space: nowrap;
+}
+
+.o_skybox_tl_detail {
+    font-size: 13px;
+    margin-top: 2px;
+    word-break: break-word;
+}
+
+.o_skybox_tl_user {
+    font-size: 12px;
+    color: var(--bs-secondary);
+    margin-top: 4px;
+}

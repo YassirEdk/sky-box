@@ -9,6 +9,19 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='name']" position="after">
                 <field name="id" string="ID" optional="show"/>
+                <field name="skybox_code" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Formulaire Entrepot : code Skybox (warehouseCode) -->
+    <record id="view_skybox_warehouse_form" model="ir.ui.view">
+        <field name="name">skybox.stock.warehouse.form</field>
+        <field name="model">stock.warehouse</field>
+        <field name="inherit_id" ref="stock.view_warehouse"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='code']" position="after">
+                <field name="skybox_code" placeholder="WH-2026-00003"/>
             </xpath>
         </field>
     </record>

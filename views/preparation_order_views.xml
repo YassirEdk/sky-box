@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_skybox_preparation_order_list" model="ir.ui.view">
+        <field name="name">skybox.preparation.order.list</field>
+        <field name="model">skybox.preparation.order</field>
+        <field name="arch" type="xml">
+            <list string="Ordres de preparation" create="0"
+                  decoration-muted="state == 'cancelled'">
+                <field name="name"/>
+                <field name="reference" optional="show"/>
+                <field name="order_type" optional="show"/>
+                <field name="requested_at"/>
+                <field name="priority"/>
+                <field name="partner_id"/>
+                <field name="agent_id" widget="many2one_avatar_user" optional="show"/>
+                <field name="suite_number" optional="show"/>
+                <field name="skybill_number" optional="show"/>
+                <field name="total_parcels"/>
+                <field name="total_weight" optional="show"/>
+                <field name="ship_to_city" optional="show"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'new'"
+                       decoration-warning="state in ('picking', 'picked', 'packed', 'ready')"
+                       decoration-success="state == 'dispatched'"
+                       decoration-muted="state == 'cancelled'"/>
+                <field name="sync_state" widget="badge" optional="show"
+                       decoration-success="sync_state == 'sent'"
+                       decoration-warning="sync_state == 'pending'"
+                       decoration-danger="sync_state == 'error'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_preparation_order_kanban" model="ir.ui.view">
+        <field name="name">skybox.preparation.order.kanban</field>
+        <field name="model">skybox.preparation.order</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" class="o_kanban_small_column"
+                    quick_create="false" create="false" records_draggable="false"
+                    group_create="false" group_delete="false" group_edit="false">
+                <field name="name"/>
+                <field name="reference"/>
+                <field name="state"/>
+                <field name="priority"/>
+                <field name="partner_id"/>
+                <field name="suite_number"/>
+                <field name="ship_to_name"/>
+                <field name="ship_to_city"/>
+                <field name="ship_to_country_id"/>
+                <field name="skybill_number"/>
+                <field name="warehouse_id"/>
+                <field name="carrier"/>
+                <field name="carrier_tracking_number"/>
+                <field name="total_parcels"/>
+                <field name="total_weight"/>
+                <field name="requested_at"/>
+                <field name="has_exception"/>
+                <field name="exception_code"/>
+                <field name="sync_state"/>
+                <field name="agent_id"/>
+                <progressbar field="sync_state" sum_field="total_parcels"
+                             colors='{"sent": "success", "pending": "warning", "error": "danger", "none": "muted"}'/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <t t-set="stateColor" t-value="record.has_exception.raw_value ? 'danger' : {
+                            'new': 'secondary', 'picking': 'info', 'picked': 'info',
+                            'packed': 'primary', 'ready': 'warning',
+                            'dispatched': 'success', 'cancelled': 'danger',
+                        }[record.state.raw_value]"/>
+                        <t t-set="urgent" t-value="['HIGH', 'URGENT', 'EXPRESS'].includes((record.priority.raw_value || '').toUpperCase())"/>
+                        <div t-attf-class="oe_kanban_card oe_kanban_global_click o_skybox_card o_skybox_card--#{stateColor}">
+                            <div class="o_skybox_card_head">
+                                <div class="o_skybox_card_ref text-truncate">
+                                    <span class="o_skybox_ref"><field name="name"/></span>
+                                    <small t-if="record.reference.raw_value" class="o_skybox_seq text-truncate">
+                                        <i class="fa fa-hashtag me-1" title="Reference"/>
+                                        <field name="reference"/>
+                                    </small>
+                                </div>
+                                <span t-if="record.priority.raw_value"
+                                      t-attf-class="badge rounded-pill text-bg-#{urgent ? 'danger' : 'light'}">
+                                    <i t-if="urgent" class="fa fa-bolt me-1" title="Urgent"/>
+                                    <field name="priority"/>
+                                </span>
+                            </div>
+                            <div t-if="record.has_exception.raw_value" class="alert alert-danger py-1 px-2 mb-2 small" role="status">
+                                <i class="fa fa-exclamation-triangle me-1" title="Exception"/>
+                                Exception <field name="exception_code"/>
+                            </div>
+                            <div class="o_skybox_card_body">
+                                <div t-if="record.partner_id.raw_value or record.ship_to_name.raw_value"
+                                     class="o_skybox_line text-truncate">
+                                    <i class="fa fa-user o_skybox_ico" title="Client"/>
+                                    <t t-if="record.partner_id.raw_value"><field name="partner_id"/></t>
+                                    <t t-else=""><field name="ship_to_name"/></t>
+                                    <small t-if="record.suite_number.raw_value" class="text-muted ms-1">
+                                        (<field name="suite_number"/>)
+                                    </small>
+                                </div>
+                                <div t-if="record.ship_to_city.raw_value or record.ship_to_country_id.raw_value"
+                                     class="o_skybox_line text-truncate">
+                                    <i class="fa fa-map-marker o_skybox_ico" title="Destination"/>
+                                    <field name="ship_to_city"/>
+                                    <t t-if="record.ship_to_city.raw_value and record.ship_to_country_id.raw_value">, </t>
+                                    <field name="ship_to_country_id"/>
+                                </div>
+                                <div t-if="record.skybill_number.raw_value" class="o_skybox_line text-truncate">
+                                    <i class="fa fa-file-text-o o_skybox_ico" title="Skybill"/>
+                                    <field name="skybill_number"/>
+                                </div>
+                                <div t-if="record.warehouse_id.raw_value" class="o_skybox_line text-truncate">
+                                    <i class="fa fa-building o_skybox_ico" title="Entrepot"/>
+                                    <field name="warehouse_id"/>
+                                </div>
+                                <div t-if="record.carrier.raw_value or record.carrier_tracking_number.raw_value"
+                                     class="o_skybox_line text-truncate">
+                                    <i class="fa fa-truck o_skybox_ico" title="Transporteur"/>
+                                    <field name="carrier"/>
+                                    <span t-if="record.carrier_tracking_number.raw_value" class="text-muted ms-1">
+                                        <field name="carrier_tracking_number"/>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="o_skybox_card_foot">
+                                <span class="text-muted">
+                                    <i class="fa fa-cubes me-1" title="Colis"/>
+                                    <strong class="text-body"><field name="total_parcels"/></strong> colis
+                                    <t t-if="record.total_weight.raw_value">
+                                        · <field name="total_weight"/> kg
+                                    </t>
+                                </span>
+                                <span class="d-flex align-items-center gap-2">
+                                    <field name="agent_id" widget="many2one_avatar_user"/>
+                                    <i t-if="record.sync_state.raw_value == 'pending'"
+                                       class="fa fa-clock-o text-warning" title="En attente d'envoi a Skybox"/>
+                                    <i t-if="record.sync_state.raw_value == 'error'"
+                                       class="fa fa-exclamation-circle text-danger" title="Envoi refuse par Skybox"/>
+                                    <span t-if="record.requested_at.raw_value" class="text-muted">
+                                        <i class="fa fa-calendar me-1" title="Demande le"/>
+                                        <field name="requested_at" widget="date"/>
+                                    </span>
+                                </span>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="view_skybox_preparation_order_form" model="ir.ui.view">
+        <field name="name">skybox.preparation.order.form</field>
+        <field name="model">skybox.preparation.order</field>
+        <field name="arch" type="xml">
+            <form string="Ordre de preparation" create="0">
+                <header>
+                    <button name="action_picking" string="Commencer le picking" type="object"
+                            class="btn-primary" invisible="state != 'new'"/>
+                    <button name="action_picked" string="Picked" type="object"
+                            class="btn-primary" invisible="state not in ('new', 'picking')"/>
+                    <button name="action_packed" string="Packed" type="object"
+                            class="btn-primary" invisible="state not in ('new', 'picking', 'picked')"/>
+                    <button name="action_ready" string="Pret a expedier" type="object"
+                            invisible="state not in ('new', 'picking', 'picked', 'packed')"/>
+                    <button name="action_dispatched" string="Expedie" type="object"
+                            class="btn-primary" invisible="state != 'ready'"
+                            confirm="Le transporteur a pris le carton ? Le numero de suivi sera envoye au client."/>
+                    <button name="action_exception" string="Signaler une exception" type="object"
+                            class="btn-danger" invisible="state in ('dispatched', 'cancelled')"/>
+                    <button name="action_resend" string="Renvoyer a Skybox" type="object"
+                            invisible="not pending_status"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="new,picking,picked,packed,ready,dispatched"/>
+                </header>
+                <sheet>
+                    <div class="alert alert-danger" role="alert"
+                         invisible="state != 'cancelled'">
+                        Ordre annule par Skybox : <field name="cancel_reason" class="d-inline"/>
+                    </div>
+                    <div class="alert alert-warning" role="alert"
+                         invisible="not has_exception">
+                        Exception signalee : <field name="exception_code" class="d-inline"/> -
+                        <field name="exception_message" class="d-inline"/>
+                    </div>
+                    <div class="alert alert-info" role="alert"
+                         invisible="sync_state != 'pending'">
+                        Etape <field name="pending_status" class="d-inline"/> pas encore
+                        acceptee par Skybox : nouvel essai automatique toutes les 5 minutes.
+                    </div>
+                    <div class="alert alert-danger" role="alert"
+                         invisible="sync_state != 'error'">
+                        Envoi refuse par Skybox, voir "Reponse Skybox".
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                        <field name="reference"/>
+                    </div>
+                    <group>
+                        <group string="Ordre">
+                            <field name="order_type"/>
+                            <field name="priority"/>
+                            <field name="agent_id" widget="many2one_avatar_user"/>
+                            <field name="warehouse_code"/>
+                            <field name="warehouse_id"/>
+                            <field name="requested_by"/>
+                            <field name="requested_at"/>
+                            <field name="cancelled_at" invisible="not cancelled_at"/>
+                        </group>
+                        <group string="Envoi Skybox">
+                            <field name="sync_state"/>
+                            <field name="last_sent_status"/>
+                            <field name="sync_date"/>
+                            <field name="sync_message"/>
+                        </group>
+                        <group string="Skybill">
+                            <field name="skybill_number"/>
+                            <field name="skybill_status"/>
+                            <field name="paid_at"/>
+                            <field name="total_parcels"/>
+                            <field name="total_weight"/>
+                        </group>
+                        <group string="Client">
+                            <field name="partner_id"/>
+                            <field name="suite_number"/>
+                        </group>
+                        <group string="Livrer a">
+                            <field name="ship_to_name"/>
+                            <field name="ship_to_phone"/>
+                            <field name="ship_to_address"/>
+                            <field name="ship_to_city"/>
+                            <field name="ship_to_country_id"/>
+                        </group>
+                    </group>
+                    <field name="instructions" placeholder="Instructions"
+                           invisible="not instructions"/>
+                    <notebook>
+                        <page string="Colis a preparer" name="lines">
+                            <field name="line_ids">
+                                <list editable="bottom" create="0" delete="0">
+                                    <field name="pick_state"/>
+                                    <field name="tracking_number" readonly="1"/>
+                                    <field name="parcel_id" optional="hide"/>
+                                    <field name="current_bag_code" readonly="1"/>
+                                    <field name="zone_code" readonly="1"/>
+                                    <field name="aisle_code" readonly="1"/>
+                                    <field name="rack_code" readonly="1"/>
+                                    <field name="location_code" readonly="1"/>
+                                    <field name="location_id" optional="show"/>
+                                    <field name="weight" readonly="1"/>
+                                    <field name="length_cm" optional="hide" readonly="1"/>
+                                    <field name="width_cm" optional="hide" readonly="1"/>
+                                    <field name="height_cm" optional="hide" readonly="1"/>
+                                    <field name="fragile" readonly="1"/>
+                                    <button name="action_history" type="object"
+                                            icon="fa-history" title="Historique du colis"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Carton et expedition" name="shipping">
+                            <group>
+                                <group string="Carton final (Packed)">
+                                    <field name="package_code" placeholder="CTN-0001"/>
+                                </group>
+                                <group string="Expedition (Expedie)"
+                                       invisible="state not in ('ready', 'dispatched')">
+                                    <field name="carrier" placeholder="DHL"
+                                           readonly="state == 'dispatched'"/>
+                                    <field name="carrier_tracking_number"
+                                           readonly="state == 'dispatched'"/>
+                                </group>
+                                <group string="Exception">
+                                    <field name="exception_code" placeholder="CARRIER_DELAY"/>
+                                    <field name="exception_message"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Evenements" name="events">
+                            <field name="event_ids" readonly="1">
+                                <list>
+                                    <field name="received_at"/>
+                                    <field name="event_type"/>
+                                    <field name="event_id"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'accepted'"
+                                           decoration-danger="state in ('rejected', 'error')"/>
+                                    <field name="message"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_skybox_preparation_order_search" model="ir.ui.view">
+        <field name="name">skybox.preparation.order.search</field>
+        <field name="model">skybox.preparation.order</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="skybill_number"/>
+                <field name="suite_number"/>
+                <field name="partner_id"/>
+                <field name="line_ids" string="Tracking"
+                       filter_domain="[('line_ids.tracking_number', 'ilike', self)]"/>
+                <field name="reference"/>
+                <field name="agent_id"/>
+                <filter name="my_orders" string="Mes ordres"
+                        domain="[('agent_id', '=', uid)]"/>
+                <filter name="unassigned" string="Sans picker"
+                        domain="[('agent_id', '=', False)]"/>
+                <filter name="open" string="A preparer"
+                        domain="[('state', 'in', ('new', 'picking', 'picked', 'packed', 'ready'))]"/>
+                <filter name="sync_problem" string="Envoi Skybox a revoir"
+                        domain="[('sync_state', 'in', ('pending', 'error'))]"/>
+                <filter name="cancelled" string="Annules"
+                        domain="[('state', '=', 'cancelled')]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_state" string="Statut" context="{'group_by': 'state'}"/>
+                    <filter name="group_agent" string="Picker" context="{'group_by': 'agent_id'}"/>
+                    <filter name="group_priority" string="Priorite" context="{'group_by': 'priority'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_skybox_preparation_order" model="ir.actions.act_window">
+        <field name="name">Ordres de preparation</field>
+        <field name="res_model">skybox.preparation.order</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[('state', '!=', 'dispatched')]</field>
+        <field name="search_view_id" ref="view_skybox_preparation_order_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucun ordre de preparation recu de Skybox
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_skybox_preparation_order"
+              name="Preparation orders"
+              parent="menu_skybox_tracking"
+              action="action_skybox_preparation_order"
+              sequence="40"/>
+
+</odoo>

@@ -11,7 +11,7 @@ class SkyboxAccessToken(models.Model):
     _order = 'id desc'
 
     # Duree de vie glissante du jeton (prolongee a chaque utilisation).
-    TTL_DAYS = 1
+    TTL_MINUTES = 5
 
     token = fields.Char(
         string="Jeton", required=True, index=True, copy=False, readonly=True,
@@ -40,7 +40,7 @@ class SkyboxAccessToken(models.Model):
             'token': secrets.token_urlsafe(48),
             'user_id': user.id,
             'api_key_id': api_key.id if api_key else False,
-            'expiry': now + timedelta(days=self.TTL_DAYS),
+            'expiry': now + timedelta(minutes=self.TTL_MINUTES),
             'last_used': now,
         })
 
@@ -57,11 +57,17 @@ class SkyboxAccessToken(models.Model):
         if not rec or (rec.expiry and rec.expiry < now):
             return self.browse()
         # Expiration glissante.
-        rec.write({'last_used': now, 'expiry': now + timedelta(days=self.TTL_DAYS)})
+        rec.write({'last_used': now, 'expiry': now + timedelta(minutes=self.TTL_MINUTES)})
         return rec
 
     @api.model
     def _gc_expired(self):
-        """Nettoyage optionnel des jetons expires (cron)."""
+        """Desactive les jetons expires (cron) et journalise la deconnexion
+        automatique dans l'historique de connexion."""
         expired = self.sudo().search([('expiry', '<', fields.Datetime.now())])
+        Log = self.env['skybox.login.log'].sudo()
+        for token in expired:
+            Log._log(token.user_id, 'logout', 'mobile',
+                     note="Session expiree (inactif depuis plus de %s minutes)"
+                          % self.TTL_MINUTES, date=token.expiry)
         expired.write({'active': False})

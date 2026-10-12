@@ -8,12 +8,8 @@
         <field name="arch" type="xml">
             <form string="Prealerte">
                 <header>
-                    <button name="action_receive" string="Marquer Received" type="object"
-                            class="btn-primary" invisible="state != 'pending'"/>
-                    <button name="action_reset_pending" string="Remettre Pending" type="object"
-                            invisible="state != 'received'"/>
-                    <field name="state" widget="statusbar"
-                           statusbar_visible="pending,received"/>
+                    <field name="processing_state" widget="statusbar"
+                           statusbar_visible="not_processed,processed"/>
                 </header>
                 <sheet>
                     <div class="oe_title">
@@ -26,6 +22,7 @@
                             <field name="tracking_number"/>
                             <field name="suite_number"/>
                             <field name="courier_id"/>
+                            <field name="bag_id"/>
                             <field name="delivery_date"/>
                         </group>
                         <group string="Valeur">
@@ -64,10 +61,21 @@
                         </page>
                         <page string="Matching colis recu" name="matching">
                             <group>
-                                <field name="matched_package_ref"/>
-                                <field name="matched_weight"/>
-                                <field name="matched_date"/>
-                                <field name="match_notes"/>
+                                <group>
+                                    <field name="matched_package_ref"/>
+                                    <field name="matched_weight"/>
+                                    <field name="matched_date"/>
+                                    <field name="match_notes"/>
+                                </group>
+                                <group string="Dimensions (Skybox)">
+                                    <field name="length_cm"/>
+                                    <field name="width_cm"/>
+                                    <field name="height_cm"/>
+                                    <field name="volumetric_weight"/>
+                                    <field name="chargeable_weight"/>
+                                    <field name="parcel_ids" widget="many2many_tags"
+                                           string="Colis Skybox" invisible="not parcel_ids"/>
+                                </group>
                             </group>
                         </page>
                     </notebook>
@@ -89,11 +97,12 @@
                 <field name="tracking_number"/>
                 <field name="suite_number"/>
                 <field name="courier_id"/>
+                <field name="bag_id" optional="show"/>
                 <field name="declared_value"/>
                 <field name="delivery_date"/>
-                <field name="state" widget="badge"
-                       decoration-info="state == 'pending'"
-                       decoration-success="state == 'received'"/>
+                <field name="processing_state" widget="badge"
+                       decoration-success="processing_state == 'processed'"
+                       decoration-warning="processing_state == 'not_processed'"/>
                 <field name="tracking_id"/>
                 <field name="currency_id" column_invisible="1"/>
             </list>
@@ -110,13 +119,15 @@
                 <field name="tracking_number"/>
                 <field name="suite_number"/>
                 <field name="courier_id"/>
-                <filter name="pending" string="Pending" domain="[('state', '=', 'pending')]"/>
-                <filter name="received" string="Received" domain="[('state', '=', 'received')]"/>
+                <filter name="processed" string="Processed"
+                        domain="[('processing_state', '=', 'processed')]"/>
+                <filter name="not_processed" string="Not processed"
+                        domain="[('processing_state', '=', 'not_processed')]"/>
                 <group expand="0" string="Regrouper par">
                     <filter name="group_courier" string="Transporteur"
                             context="{'group_by': 'courier_id'}"/>
-                    <filter name="group_state" string="Statut"
-                            context="{'group_by': 'state'}"/>
+                    <filter name="group_processing_state" string="Traitement Skybox"
+                            context="{'group_by': 'processing_state'}"/>
                 </group>
             </search>
         </field>
@@ -127,11 +138,11 @@
         <field name="name">skybox.prealerte.kanban</field>
         <field name="model">skybox.prealerte</field>
         <field name="arch" type="xml">
-            <kanban default_group_by="state" class="o_kanban_small_column"
-                    records_draggable="1" quick_create="false"
+            <kanban default_group_by="processing_state" class="o_kanban_small_column"
+                    records_draggable="0" quick_create="false"
                     group_create="false" group_delete="false" group_edit="false">
                 <field name="name"/>
-                <field name="state"/>
+                <field name="processing_state"/>
                 <field name="tracking_id"/>
                 <field name="tracking_number"/>
                 <field name="suite_number"/>
@@ -143,7 +154,7 @@
                 <templates>
                     <t t-name="kanban-box">
                         <t t-set="stateColor"
-                           t-value="{'pending': 'warning', 'received': 'success'}[record.state.raw_value]"/>
+                           t-value="{'not_processed': 'warning', 'processed': 'success'}[record.processing_state.raw_value]"/>
                         <div t-attf-class="oe_kanban_card oe_kanban_global_click o_skybox_card o_skybox_card--#{stateColor}">
                             <div class="o_skybox_card_head">
                                 <div class="o_skybox_card_ref">
@@ -154,7 +165,7 @@
                                     </small>
                                 </div>
                                 <span t-attf-class="badge rounded-pill text-bg-#{stateColor}">
-                                    <field name="state"/>
+                                    <field name="processing_state"/>
                                 </span>
                             </div>
                             <div class="o_skybox_card_body">
@@ -194,6 +205,7 @@
         <field name="name">Les prealertes</field>
         <field name="res_model">skybox.prealerte</field>
         <field name="view_mode">list,kanban,form</field>
+        <field name="domain">[('skybox_past', '=', False)]</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Aucune prealerte pour le moment

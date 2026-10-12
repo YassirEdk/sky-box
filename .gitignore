@@ -11,3 +11,8 @@ venv/
 .idea/
 *.swp
 .DS_Store
+
+# Setup folder: only keep the setup scripts
+Setup/*
+!Setup/setup_inventory.py
+!Setup/setup_inventory.sh

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_skybox_picker_log_list" model="ir.ui.view">
+        <field name="name">skybox.picker.log.list</field>
+        <field name="model">skybox.picker.log</field>
+        <field name="arch" type="xml">
+            <list string="Historique pickers" create="0" edit="0"
+                  decoration-warning="warning" decoration-muted="event == 'login'">
+                <field name="date"/>
+                <field name="user_id" widget="many2one_avatar_user"/>
+                <field name="event" widget="badge"
+                       decoration-success="event == 'login'"
+                       decoration-warning="event in ('logout', 'inactive') and warning"/>
+                <field name="order_count"/>
+                <field name="order_ids" widget="many2many_tags"/>
+                <field name="note"/>
+                <field name="warning" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_picker_log_search" model="ir.ui.view">
+        <field name="name">skybox.picker.log.search</field>
+        <field name="model">skybox.picker.log</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="user_id"/>
+                <filter name="warnings" string="Avec ordres actifs" domain="[('warning', '=', True)]"/>
+                <separator/>
+                <filter name="logins" string="Connexions" domain="[('event', '=', 'login')]"/>
+                <filter name="logouts" string="Deconnexions" domain="[('event', '=', 'logout')]"/>
+                <filter name="inactive" string="Inactifs" domain="[('event', '=', 'inactive')]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_user" string="Picker" context="{'group_by': 'user_id'}"/>
+                    <filter name="group_event" string="Evenement" context="{'group_by': 'event'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_skybox_picker_log" model="ir.actions.act_window">
+        <field name="name">Historique pickers</field>
+        <field name="res_model">skybox.picker.log</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_skybox_picker_log_search"/>
+    </record>
+
+</odoo>

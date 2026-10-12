@@ -75,6 +75,34 @@
                         </div>
                     </group>
 
+                    <!-- My API : callback Skybox -> Odoo -->
+                    <group invisible="api_type != 'my_api'">
+                        <group string="Callback Skybox">
+                            <field name="callback_url" widget="CopyClipboardChar"/>
+                            <field name="partner_code" placeholder="ODOO_MA_TEST"/>
+                        </group>
+                        <group string="Authentification">
+                            <field name="auth_type"/>
+                            <field name="header_name" invisible="auth_type != 'header'"/>
+                            <field name="query_param" invisible="auth_type != 'query'"/>
+                        </group>
+                        <div class="text-muted" colspan="2">
+                            <p>
+                                Skybox envoie ses evenements en
+                                <strong>POST /skybox/events</strong> (JSON) avec
+                                cette cle (Bearer, en-tete ou parametre d'URL
+                                selon l'authentification choisie). Les evenements
+                                recus sont visibles dans
+                                <strong>Configuration &gt; Evenements Skybox</strong>.
+                            </p>
+                            <p>
+                                Test de connectivite : <strong>GET /skybox/ping</strong>
+                                avec la meme cle : 200 (OK), 401 (cle invalide)
+                                ou 500 (erreur Odoo).
+                            </p>
+                        </div>
+                    </group>
+
                     <!-- API externe : parametres d'appel -->
                     <group invisible="api_type != 'api_externe'">
                         <group string="Configuration">

@@ -21,10 +21,10 @@
                             <div class="o_skybox_bag_info">
                                 <span class="o_skybox_ref"><field name="name"/></span>
                                 <small t-if="full" class="text-info">
-                                    <i class="fa fa-circle me-1"/>En cours
+                                    <i class="fa fa-circle me-1" title="En cours"/>En cours
                                 </small>
                                 <small t-else="" class="text-muted">
-                                    <i class="fa fa-circle-o me-1"/>Vide
+                                    <i class="fa fa-circle-o me-1" title="Vide"/>Vide
                                 </small>
                             </div>
                             <div class="o_skybox_bag_count">
@@ -63,7 +63,7 @@
                 <sheet>
                     <div class="oe_button_box" name="button_box">
                         <div class="oe_stat_button" style="cursor: default;">
-                            <i class="fa fa-fw fa-shopping-bag o_button_icon"/>
+                            <i class="fa fa-fw fa-shopping-bag o_button_icon" title="Articles"/>
                             <div class="o_stat_info">
                                 <span class="o_stat_value">
                                     <field name="skybox_order_count"/>
@@ -96,6 +96,55 @@
                                            decoration-danger="prealerte_status == 'not_found'"/>
                                 </list>
                             </field>
+                        </page>
+                        <page string="Prealertes dans le bag" name="prealertes">
+                            <field name="skybox_prealerte_ids" readonly="1" nolabel="1">
+                                <list string="Prealertes" create="0" delete="0">
+                                    <field name="name"/>
+                                    <field name="tracking_number"/>
+                                    <field name="partner_id"/>
+                                    <field name="suite_number" optional="show"/>
+                                    <field name="skybill" optional="show"/>
+                                    <field name="matched_weight" optional="show"/>
+                                    <field name="processing_state" widget="badge"
+                                           decoration-success="processing_state == 'processed'"
+                                           decoration-warning="processing_state == 'not_processed'"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Suivi Skybox" name="skybox_progress">
+                            <group>
+                                <group string="Traitement">
+                                    <field name="skybox_bag_status"/>
+                                    <field name="skybox_session_id"/>
+                                    <field name="skybox_warehouse_code"/>
+                                    <field name="skybox_started_at"/>
+                                    <field name="skybox_started_by"/>
+                                    <field name="skybox_completed_at"/>
+                                    <field name="skybox_completed_by"/>
+                                    <field name="skybox_detail_level"/>
+                                    <field name="skybox_last_event_id"/>
+                                </group>
+                                <group string="Compteurs">
+                                    <field name="skybox_expected"/>
+                                    <field name="skybox_processed"/>
+                                    <field name="skybox_set_aside"/>
+                                    <field name="skybox_missing"/>
+                                    <field name="skybox_unexpected_kept"/>
+                                    <field name="skybox_unexpected_set_aside"/>
+                                    <field name="skybox_pending_identification"/>
+                                    <field name="skybox_remaining"/>
+                                </group>
+                            </group>
+                            <group string="Trackings restants"
+                                   invisible="not skybox_remaining_tracking_numbers">
+                                <field name="skybox_remaining_tracking_numbers" nolabel="1" colspan="2"/>
+                            </group>
+                            <group string="Colis (JSON Skybox)"
+                                   invisible="not skybox_parcels_json or skybox_parcels_json == '[]'">
+                                <field name="skybox_parcels_json" nolabel="1" colspan="2"
+                                       class="font-monospace"/>
+                            </group>
                         </page>
                     </notebook>
                 </sheet>

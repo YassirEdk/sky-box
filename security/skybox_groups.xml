@@ -7,10 +7,16 @@
         <field name="sequence">20</field>
     </record>
 
-    <!-- Roles (hierarchie : Admin > Manager > Agent) -->
+    <!-- Roles (hierarchie : Admin > Manager > Agent > Picker) -->
+    <record id="group_skybox_picker" model="res.groups">
+        <field name="name">Picker</field>
+        <field name="category_id" ref="module_category_skybox"/>
+    </record>
+
     <record id="group_skybox_agent" model="res.groups">
         <field name="name">Agent</field>
         <field name="category_id" ref="module_category_skybox"/>
+        <field name="implied_ids" eval="[(4, ref('group_skybox_picker'))]"/>
     </record>
 
     <record id="group_skybox_manager" model="res.groups">

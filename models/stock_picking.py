@@ -14,6 +14,7 @@ class StockPicking(models.Model):
         selection=[
             ('receipt', "Receipt"),
             ('stored', "Stored"),
+            ('processed', "Processed"),
             ('canceled', "Canceled"),
         ],
         string="Statut", default='receipt', required=True, copy=False,
@@ -39,6 +40,11 @@ class StockPicking(models.Model):
         comodel_name='stock.quant.package', string="Bag",
     )
     notes = fields.Text(string="Notes")
+
+    skybox_past = fields.Boolean(
+        string="Termine (Past orders)", index=True, copy=False, readonly=True,
+        help="Expedie : l'ordre de preparation est termine, visible "
+             "uniquement dans Past orders.")
 
     history_ids = fields.One2many(
         comodel_name='skybox.picking.history', inverse_name='picking_id',
@@ -86,6 +92,14 @@ class StockPicking(models.Model):
             picking._log_history(
                 'received', location=picking.location_dest_id,
                 bag=picking.bag, note=note)
+        # Colis recu -> date de reception sur la prealerte du meme tracking.
+        numbers = [n for n in pickings.filtered(
+            lambda p: p.picking_type_code == 'incoming').mapped('tracking_number') if n]
+        if numbers:
+            Prealerte = self.env['skybox.prealerte'].sudo()
+            domain = ['|'] * (len(numbers) - 1) + [
+                ('tracking_number', '=ilike', n) for n in numbers]
+            Prealerte.search(domain)._fill_reception_date()
         return pickings
 
     def action_open_store(self):
@@ -157,10 +171,18 @@ class StockPicking(models.Model):
             self.write(vals)
 
         # Articles declares -> lignes de mouvement de la reception.
+        self._add_products(prealerte.line_ids)
+
+    def _add_products(self, lines):
+        """Ajoute les articles (description + quantite) comme lignes de
+        mouvement de la reception ; produit cree s'il n'existe pas."""
+        self.ensure_one()
+        if self.state in ('done', 'cancel'):
+            return
         Product = self.env['product.product']
         existing_products = self.move_ids_without_package.mapped('product_id')
         move_vals = []
-        for line in prealerte.line_ids:
+        for line in lines:
             if not line.description:
                 continue
             product = Product.search(
@@ -173,6 +195,7 @@ class StockPicking(models.Model):
                 })
             if product in existing_products:
                 continue
+            existing_products |= product
             move_vals.append((0, 0, {
                 'name': line.description,
                 'product_id': product.id,

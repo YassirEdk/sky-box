@@ -7,12 +7,13 @@ from odoo.http import request
 class SkyboxLoginController(http.Controller):
 
     def _user_role(self, user):
-        """Retourne le role Skybox de l'utilisateur : admin, manager, agent."""
+        """Retourne le role Skybox de l'utilisateur : admin, manager, agent, picker."""
         env = request.env
         for xmlid, role in (
             ('skybox.group_skybox_admin', 'admin'),
             ('skybox.group_skybox_manager', 'manager'),
             ('skybox.group_skybox_agent', 'agent'),
+            ('skybox.group_skybox_picker', 'picker'),
         ):
             grp = env.ref(xmlid, raise_if_not_found=False)
             if grp and user in grp.sudo().users:
@@ -94,6 +95,11 @@ class SkyboxLoginController(http.Controller):
         attempt._register_success(ip, login)
         user = request.env['res.users'].sudo().browse(uid)
         token = request.env['skybox.access.token']._issue(user, key_rec)
+        request.env['skybox.login.log']._log(
+            user, 'login', 'mobile', note="Connexion depuis l'app")
+        role = self._user_role(user)
+        if role == 'picker':
+            request.env['skybox.preparation.order'].sudo()._picker_login(user)
         return {
             'success': True,
             'access_token': token.token,
@@ -102,7 +108,7 @@ class SkyboxLoginController(http.Controller):
             'name': user.name,
             'login': user.login,
             'email': user.email or None,
-            'role': self._user_role(user),
+            'role': role,
         }
 
     @http.route('/skybox/api/me', type='json', auth='public',
@@ -135,8 +141,13 @@ class SkyboxLoginController(http.Controller):
         raw = self._bearer_token(kwargs)
         rec = request.env['skybox.access.token'].sudo().search(
             [('token', '=', raw)], limit=1)
-        if rec:
+        if rec and rec.active:
             rec.active = False
+            request.env['skybox.login.log']._log(
+                rec.user_id, 'logout', 'mobile', note="Deconnexion depuis l'app")
+            if self._user_role(rec.user_id) == 'picker':
+                request.env['skybox.preparation.order'].sudo()._picker_logout(
+                    rec.user_id)
         return {'success': True}
 
     def _agent(self, kwargs):
@@ -281,6 +292,33 @@ class SkyboxLoginController(http.Controller):
             'date': fields.Datetime.to_string(history.date),
         }
 
+    @http.route('/skybox/api/bag', type='json', auth='public',
+                methods=['POST'], csrf=False)
+    def api_bag(self, **kwargs):
+        """Scan d'un bag (app mobile) : renvoie les colis qui sont dedans.
+
+        En-tete: Authorization: Bearer <access_token>
+        Corps JSON attendu: {"bag": "BAG001"}  (ou {"bag_id": 1})
+        Colis = prealertes affectees au bag (par Skybox) + receptions encore
+        dans le bag (statut Receipt).
+        """
+        user, error = self._agent(kwargs)
+        if error:
+            return error
+        env = self._agent_env(user)
+        bag, error = self._find_bag(env, kwargs)
+        if error:
+            return error
+        colis = bag._skybox_bag_contents()
+        return {
+            'success': True,
+            'bag': bag.name,
+            'bag_id': bag.id,
+            'skybox_status': bag.skybox_bag_status or None,
+            'count': len(colis),
+            'colis': colis,
+        }
+
     @http.route('/skybox/api/store', type='json', auth='public',
                 methods=['POST'], csrf=False)
     def api_store(self, **kwargs):
@@ -290,8 +328,9 @@ class SkyboxLoginController(http.Controller):
         Corps JSON attendu:
             {"tracking_number": "...", "bag": "BAG001",
              "location": "WH/Stock/Zone A1"}
-        La commande (encore dans le bag, statut Receipt) passe en Stored
-        dans l'emplacement ; enregistree dans l'historique.
+        La commande (encore dans le bag, statut Receipt ou Processed par
+        Skybox) passe en Stored dans l'emplacement ; enregistree dans
+        l'historique. Seule cette route fait passer un colis en Stored.
         """
         user, error = self._agent(kwargs)
         if error:
@@ -312,7 +351,7 @@ class SkyboxLoginController(http.Controller):
         pickings = env['stock.picking'].search([
             ('picking_type_code', '=', 'incoming'),
             ('bag', '=', bag.id),
-            ('skybox_status', '=', 'receipt'),
+            ('skybox_status', 'in', ('receipt', 'processed')),
             ('tracking_number', '=ilike', tracking_number),
         ])
         if not pickings:

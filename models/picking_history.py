@@ -15,6 +15,7 @@ class SkyboxPickingHistory(models.Model):
         selection=[
             ('received', "Received"),
             ('stored', "Stored"),
+            ('processed', "Processed"),
             ('moved', "Transferred"),
             ('canceled', "Canceled"),
         ],

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import hmac
 import logging
 import secrets
 
@@ -73,6 +74,51 @@ class SkyboxApiKey(models.Model):
     last_test_message = fields.Char(
         string="Dernier resultat", readonly=True, copy=False,
     )
+    # --- My API : callback Skybox -> Odoo (POST /skybox/events) ---
+    partner_code = fields.Char(
+        string="Partner code",
+        help="Si renseigne, le champ partnerCode des evenements Skybox doit "
+             "correspondre (ex: ODOO_MA_TEST).",
+    )
+    callback_url = fields.Char(
+        string="Callback URL", compute='_compute_callback_url',
+        help="URL a communiquer a Skybox pour l'envoi des evenements.",
+    )
+
+    def _compute_callback_url(self):
+        base = self.env['ir.config_parameter'].sudo().get_param(
+            'web.base.url') or ''
+        for rec in self:
+            rec.callback_url = "%s/skybox/events" % base.rstrip('/')
+
+    def _request_matches(self, headers, args):
+        """Verifie que la requete entrante porte cette cle (selon auth_type)."""
+        self.ensure_one()
+        if self.auth_type == 'none':
+            return True
+        if not self.key:
+            return False
+        provided = ''
+        if self.auth_type == 'bearer':
+            auth = headers.get('Authorization') or ''
+            if auth[:7].lower() == 'bearer ':
+                provided = auth[7:].strip()
+        elif self.auth_type == 'header':
+            provided = headers.get(self.header_name or 'X-API-Key') or ''
+        elif self.auth_type == 'query':
+            provided = args.get(self.query_param or 'api_key') or ''
+        return bool(provided) and hmac.compare_digest(
+            provided.encode(), self.key.encode())
+
+    @api.model
+    def _match_incoming_request(self, headers, args):
+        """Cle 'My API' active correspondant a la requete (ou vide)."""
+        for rec in self.search([('api_type', '=', 'my_api'),
+                                ('active', '=', True)]):
+            if rec._request_matches(headers, args):
+                rec.last_used = fields.Datetime.now()
+                return rec
+        return self.browse()
 
     def write(self, vals):
         # Reinitialiser le statut uniquement quand la cle ou l'URL change.
@@ -132,6 +178,37 @@ class SkyboxApiKey(models.Model):
         )
         return response.status_code, response.reason
 
+    @api.model
+    def _bags_by_tracking(self, numbers):
+        """{tracking (minuscule): nom du bag} des receptions Odoo."""
+        numbers = [n for n in numbers if n]
+        if not numbers:
+            return {}
+        domain = ['|'] * (len(numbers) - 1) + [
+            ('tracking_number', '=ilike', n) for n in numbers]
+        pickings = self.env['stock.picking'].sudo().search([
+            ('picking_type_code', '=', 'incoming'),
+            ('state', '!=', 'cancel'),
+            ('bag', '!=', False),
+        ] + domain, order='create_date asc')
+        bags = {}
+        for picking in pickings:
+            bags.setdefault((picking.tracking_number or '').lower(),
+                            picking.bag.name)
+        return bags
+
+    @api.model
+    def _skybox_wms_base(self):
+        """(cle, URL de base Skybox) pour les appels Odoo -> Skybox : cle
+        "API externe" active dont l'URL pointe vers /v1/integrations/wms/."""
+        keys = self.search([('api_type', '=', 'api_externe'),
+                            ('active', '=', True), ('url', '!=', False)])
+        key = (keys.filtered(lambda k: '/v1/integrations/wms/' in k.url)[:1]
+               or keys.filtered(lambda k: '/v1/' in k.url)[:1])
+        if not key:
+            return self.browse(), ''
+        return key, key.url.split('/v1/')[0].rstrip('/')
+
     def _check_receptions(self, numbers):
         """Envoie le lot de numeros de tracking a l'endpoint de check du
         backoffice (POST) et retourne le JSON de reponse, ou None.
@@ -143,8 +220,11 @@ class SkyboxApiKey(models.Model):
             {
               "batchId": "...",
               "warehouseCode": "...",
-              "packages": [{"trackingNumber", "operator", "receivedAt"}, ...]
+              "packages": [{"trackingNumber", "operator", "receivedAt",
+                            "bagCode"}, ...]
             }
+        bagCode = bag de la reception Odoo du meme tracking (omis si
+        aucun bag).
         """
         self.ensure_one()
         if not self.url or not numbers:
@@ -160,14 +240,22 @@ class SkyboxApiKey(models.Model):
         warehouse_code = self.warehouse_code or (
             user.warehouse_id.code if user.warehouse_id else '')
         operator = self.operator_code or user.login
-        payload = {
-            'batchId': "ODOO-%s" % now.strftime('%Y%m%d-%H%M%S'),
-            'warehouseCode': warehouse_code,
-            'packages': [{
+        bags = self._bags_by_tracking(numbers)
+        packages = []
+        for number in numbers:
+            package = {
                 'trackingNumber': number,
                 'operator': operator,
                 'receivedAt': received_at,
-            } for number in numbers],
+            }
+            bag = bags.get((number or '').lower())
+            if bag:
+                package['bagCode'] = bag
+            packages.append(package)
+        payload = {
+            'batchId': "ODOO-%s" % now.strftime('%Y%m%d-%H%M%S'),
+            'warehouseCode': warehouse_code,
+            'packages': packages,
         }
 
         try:

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="cron_skybox_rebalance_pickers" model="ir.cron">
+        <field name="name">Skybox: redistribuer les ordres des pickers deconnectes</field>
+        <field name="model_id" ref="model_skybox_preparation_order"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_rebalance_pickers()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+    <record id="cron_skybox_expire_tokens" model="ir.cron">
+        <field name="name">Skybox: deconnecter les jetons mobiles expires</field>
+        <field name="model_id" ref="model_skybox_access_token"/>
+        <field name="state">code</field>
+        <field name="code">model._gc_expired()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

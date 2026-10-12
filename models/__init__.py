@@ -14,3 +14,10 @@ from . import tracking
 from . import check_tn_wizard
 from . import prealerte
 from . import stock_location
+from . import stock_warehouse
+from . import skybox_event
+from . import skybox_parcel
+from . import preparation_order
+from . import picker_log
+from . import login_log
+from . import colis_history

@@ -12,6 +12,55 @@
                 <field name="warehouse_id"
                        options="{'no_create': True}"/>
             </xpath>
+            <!-- Bouton intelligent : historique de connexion -->
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_skybox_login_log" type="object"
+                        class="oe_stat_button" icon="fa-history">
+                    <field string="Historique de connexion" name="skybox_login_log_count" widget="statinfo"/>
+                </button>
+            </xpath>
+            <!-- Alerte : picker sorti du cycle avec des ordres encore affectes -->
+            <xpath expr="//sheet" position="before">
+                <field name="is_skybox_picker" invisible="1"/>
+                <field name="skybox_connected" invisible="1"/>
+                <div class="alert alert-warning mb-0" role="alert"
+                     invisible="not is_skybox_picker or skybox_connected or not skybox_open_order_count">
+                    <i class="fa fa-exclamation-triangle me-1" title="Alerte"/>
+                    Ce picker est deconnecte avec
+                    <field name="skybox_open_order_count" class="d-inline fw-bold"/>
+                    ordre(s) de preparation actif(s) affecte(s) : ils seront
+                    redistribues des qu'un autre picker sera connecte.
+                </div>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page string="Historique picker" name="skybox_picker_log"
+                      invisible="not is_skybox_picker">
+                    <div class="d-flex align-items-center gap-3 mb-2">
+                        <span invisible="not skybox_connected" class="badge rounded-pill text-bg-success">
+                            <i class="fa fa-circle me-1" title="Connecte"/>Dans le cycle
+                        </span>
+                        <span invisible="skybox_connected" class="badge rounded-pill text-bg-secondary">
+                            <i class="fa fa-circle-o me-1" title="Hors cycle"/>Hors cycle
+                        </span>
+                        <button name="action_skybox_open_orders" type="object"
+                                class="btn btn-link p-0" icon="fa-cubes">
+                            <field name="skybox_open_order_count" class="d-inline"/> ordre(s) actif(s)
+                        </button>
+                    </div>
+                    <field name="skybox_picker_log_ids" readonly="1">
+                        <list decoration-warning="warning" decoration-muted="event == 'login'">
+                            <field name="date"/>
+                            <field name="event" widget="badge"
+                                   decoration-success="event == 'login'"
+                                   decoration-warning="event in ('logout', 'inactive') and warning"/>
+                            <field name="order_count"/>
+                            <field name="order_ids" widget="many2many_tags"/>
+                            <field name="note"/>
+                            <field name="warning" column_invisible="1"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
         </field>
     </record>
 

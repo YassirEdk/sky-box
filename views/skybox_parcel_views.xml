@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_skybox_parcel_list" model="ir.ui.view">
+        <field name="name">skybox.parcel.list</field>
+        <field name="model">skybox.parcel</field>
+        <field name="arch" type="xml">
+            <list string="Colis Skybox" create="0">
+                <field name="tracking_number"/>
+                <field name="partner_id"/>
+                <field name="suite_number" optional="show"/>
+                <field name="warehouse_code" optional="hide"/>
+                <field name="skybill_number"/>
+                <field name="skybill_total" optional="show"/>
+                <field name="skybill_currency_id" column_invisible="1"/>
+                <field name="actual_weight" optional="show"/>
+                <field name="chargeable_weight" optional="hide"/>
+                <field name="destination_bag_id" optional="show"/>
+                <field name="processed_at" optional="show"/>
+                <field name="revision" optional="show"/>
+                <field name="shipment_status" optional="show"/>
+                <field name="decision_kind" optional="hide"/>
+                <field name="result" widget="badge"
+                       decoration-success="result == 'PROCESSED'"
+                       decoration-warning="result in ('SET_ASIDE', 'PENDING', 'UNEXPECTED_SET_ASIDE')"
+                       decoration-danger="result == 'MISSING'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_parcel_form" model="ir.ui.view">
+        <field name="name">skybox.parcel.form</field>
+        <field name="model">skybox.parcel</field>
+        <field name="arch" type="xml">
+            <form string="Colis Skybox" create="0">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="tracking_number"/>
+                        <h1><field name="tracking_number" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Statut">
+                            <field name="result"/>
+                            <field name="shipment_status"/>
+                            <field name="identification"/>
+                            <field name="expected_in_bag"/>
+                            <field name="revision"/>
+                            <field name="last_event_type"/>
+                            <field name="last_event_id"/>
+                            <field name="decision_kind" invisible="not decision_kind"/>
+                            <field name="decision_note" invisible="not decision_kind"/>
+                            <field name="decided_by" invisible="not decision_kind"/>
+                            <field name="decided_at" invisible="not decision_kind"/>
+                        </group>
+                        <group string="Client">
+                            <field name="partner_id"/>
+                            <field name="suite_number"/>
+                            <field name="ownership_confirmed"/>
+                            <field name="ownership_source"/>
+                            <field name="warehouse_code"/>
+                            <field name="warehouse_id"/>
+                        </group>
+                        <group string="Skybill">
+                            <field name="skybill_number"/>
+                            <field name="skybill_status"/>
+                            <field name="skybill_date"/>
+                            <field name="skybill_total"/>
+                            <field name="skybill_currency_id"/>
+                        </group>
+                        <group string="Liens Odoo">
+                            <field name="picking_id"/>
+                            <field name="prealerte_id"/>
+                            <field name="source_bag_id"/>
+                            <field name="destination_bag_code"/>
+                            <field name="destination_bag_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Articles" name="items">
+                            <field name="items_source"/>
+                            <field name="line_ids">
+                                <list editable="bottom">
+                                    <field name="line_no"/>
+                                    <field name="description"/>
+                                    <field name="quantity"/>
+                                    <field name="unit_value"/>
+                                    <field name="currency_id"/>
+                                    <field name="subtotal" sum="Total"/>
+                                    <field name="hs_code"/>
+                                    <field name="category" optional="hide"/>
+                                    <field name="fragile"/>
+                                    <field name="notes" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Poids et dimensions" name="measures">
+                            <group>
+                                <group>
+                                    <field name="actual_weight"/>
+                                    <field name="volumetric_weight"/>
+                                    <field name="chargeable_weight"/>
+                                    <field name="volumetric_divisor"/>
+                                </group>
+                                <group>
+                                    <field name="length_cm"/>
+                                    <field name="width_cm"/>
+                                    <field name="height_cm"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Reception et traitement" name="processing">
+                            <group>
+                                <group string="Reception">
+                                    <field name="batch_id"/>
+                                    <field name="source_bag_code"/>
+                                    <field name="partner_received_at"/>
+                                    <field name="reception_outcome"/>
+                                    <field name="suite_number_at_reception"/>
+                                </group>
+                                <group string="Traitement">
+                                    <field name="session_id"/>
+                                    <field name="processed_at"/>
+                                    <field name="processed_by"/>
+                                    <field name="package_condition"/>
+                                    <field name="processing_notes"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Prealerte" name="prealert">
+                            <group>
+                                <field name="prealert_ref"/>
+                                <field name="prealert_status"/>
+                                <field name="courier_id"/>
+                                <field name="declared_value"/>
+                                <field name="declared_currency_id"/>
+                            </group>
+                        </page>
+                        <page string="Evenements" name="events">
+                            <field name="event_ids" readonly="1">
+                                <list>
+                                    <field name="received_at"/>
+                                    <field name="event_type"/>
+                                    <field name="event_id"/>
+                                    <field name="revision"/>
+                                    <field name="attempt"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'accepted'"
+                                           decoration-danger="state in ('rejected', 'error')"/>
+                                    <field name="message"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_skybox_parcel_search" model="ir.ui.view">
+        <field name="name">skybox.parcel.search</field>
+        <field name="model">skybox.parcel</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="tracking_number"/>
+                <field name="skybill_number"/>
+                <field name="suite_number"/>
+                <field name="partner_id"/>
+                <field name="destination_bag_code"/>
+                <filter name="processed" string="Traites"
+                        domain="[('result', '=', 'PROCESSED')]"/>
+                <filter name="not_confirmed" string="Proprietaire non confirme"
+                        domain="[('ownership_confirmed', '=', False)]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_dest_bag" string="Bag de destination"
+                            context="{'group_by': 'destination_bag_id'}"/>
+                    <filter name="group_status" string="Statut expedition"
+                            context="{'group_by': 'shipment_status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_skybox_parcel" model="ir.actions.act_window">
+        <field name="name">Colis traites</field>
+        <field name="res_model">skybox.parcel</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('skybox_past', '=', False)]</field>
+        <field name="search_view_id" ref="view_skybox_parcel_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucun colis traite par Skybox pour le moment
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_skybox_parcel"
+              name="Colis traites"
+              parent="menu_skybox_tracking"
+              action="action_skybox_parcel"
+              sequence="30"/>
+
+</odoo>

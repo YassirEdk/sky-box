@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_skybox_event_list" model="ir.ui.view">
+        <field name="name">skybox.event.list</field>
+        <field name="model">skybox.event</field>
+        <field name="arch" type="xml">
+            <list string="Evenements Skybox" create="0" edit="0"
+                  decoration-danger="state in ('rejected', 'error')"
+                  decoration-muted="state == 'received'">
+                <field name="received_at"/>
+                <field name="event_type"/>
+                <field name="event_id" optional="show"/>
+                <field name="tracking_number"/>
+                <field name="revision" optional="hide"/>
+                <field name="partner_code" optional="hide"/>
+                <field name="warehouse_code" optional="hide"/>
+                <field name="attempt" optional="show"/>
+                <field name="duplicate_count" optional="show"/>
+                <field name="partner_reference" optional="hide"/>
+                <field name="message" optional="show"/>
+                <field name="ack_status" widget="badge"
+                       decoration-success="ack_status in ('ACCEPTED', 'DUPLICATE')"
+                       decoration-warning="ack_status == 'PARTIAL'"
+                       decoration-danger="ack_status in ('REJECTED', 'ERROR')"/>
+                <field name="reason_code" optional="show"/>
+                <field name="state" widget="badge" optional="hide"
+                       decoration-success="state == 'accepted'"
+                       decoration-danger="state in ('rejected', 'error')"
+                       decoration-muted="state == 'received'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_event_form" model="ir.ui.view">
+        <field name="name">skybox.event.form</field>
+        <field name="model">skybox.event</field>
+        <field name="arch" type="xml">
+            <form string="Evenement Skybox" create="0" edit="0">
+                <header>
+                    <button name="action_reprocess" string="Retraiter"
+                            type="object" class="btn-primary"
+                            invisible="state == 'accepted'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="received,accepted"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="event_type"/></h1>
+                        <field name="event_id"/>
+                    </div>
+                    <group>
+                        <group string="Enveloppe">
+                            <field name="contract_version"/>
+                            <field name="partner_code"/>
+                            <field name="occurred_at"/>
+                            <field name="sent_at"/>
+                            <field name="attempt"/>
+                            <field name="api_key_id"/>
+                        </group>
+                        <group string="Resultat">
+                            <field name="received_at"/>
+                            <field name="processed_at"/>
+                            <field name="ack_status"/>
+                            <field name="reason_code" invisible="not reason_code"/>
+                            <field name="partner_reference"/>
+                            <field name="message"/>
+                            <field name="duplicate_count"/>
+                            <field name="last_duplicate_at"
+                                   invisible="not duplicate_count"/>
+                        </group>
+                        <group string="Objet">
+                            <field name="tracking_number" invisible="not tracking_number"/>
+                            <field name="revision" invisible="not revision"/>
+                            <field name="warehouse_code" invisible="not warehouse_code"/>
+                            <field name="parcel_id" invisible="not parcel_id"/>
+                            <field name="prealerte_id" invisible="not prealerte_id"/>
+                            <field name="bag_id" invisible="not bag_id"/>
+                            <field name="preparation_order_id"
+                                   invisible="not preparation_order_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="JSON recu" name="payload">
+                            <field name="payload" class="font-monospace"/>
+                        </page>
+                        <page string="Detail par colis" name="ack_parcels"
+                              invisible="not ack_parcels">
+                            <field name="ack_parcels" class="font-monospace"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_skybox_event_search" model="ir.ui.view">
+        <field name="name">skybox.event.search</field>
+        <field name="model">skybox.event</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="event_id"/>
+                <field name="tracking_number"/>
+                <field name="event_type"/>
+                <field name="partner_reference"/>
+                <filter name="accepted" string="Acceptes" domain="[('state', '=', 'accepted')]"/>
+                <filter name="failed" string="Rejetes / Erreurs"
+                        domain="[('state', 'in', ('rejected', 'error'))]"/>
+                <filter name="partial" string="Partiels"
+                        domain="[('ack_status', '=', 'PARTIAL')]"/>
+                <filter name="duplicates" string="DUPLICATE renvoye"
+                        domain="[('ack_status', '=', 'DUPLICATE')]"/>
+                <filter name="with_duplicates" string="Avec doublons"
+                        domain="[('duplicate_count', '>', 0)]"/>
+                <separator/>
+                <filter name="received_today" string="Aujourd'hui"
+                        domain="[('received_at', '>=', context_today().strftime('%Y-%m-%d'))]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_type" string="Type" context="{'group_by': 'event_type'}"/>
+                    <filter name="group_state" string="Resultat" context="{'group_by': 'state'}"/>
+                    <filter name="group_day" string="Jour" context="{'group_by': 'received_at:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_skybox_event" model="ir.actions.act_window">
+        <field name="name">Evenements Skybox</field>
+        <field name="res_model">skybox.event</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_skybox_event_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucun evenement Skybox recu
+            </p>
+            <p>Skybox envoie ses evenements sur POST /skybox/events.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_skybox_event"
+              name="Evenements Skybox"
+              parent="menu_skybox_configuration"
+              action="action_skybox_event"
+              sequence="15"/>
+
+</odoo>

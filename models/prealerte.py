@@ -8,6 +8,11 @@ class SkyboxPrealerte(models.Model):
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'id desc'
 
+    skybox_past = fields.Boolean(
+        string="Termine (Past orders)", index=True, copy=False, readonly=True,
+        help="Expedie : l'ordre de preparation est termine, visible "
+             "uniquement dans Past orders.")
+
     name = fields.Char(
         string="Reference", required=True, default="New",
         copy=False, readonly=True, index=True,
@@ -67,26 +72,82 @@ class SkyboxPrealerte(models.Model):
     invoice_file = fields.Binary(string="Facture", attachment=True)
     invoice_filename = fields.Char(string="Nom du fichier facture")
 
-    # --- Statut ---
-    state = fields.Selection(
-        selection=[
-            ('pending', "Pending"),
-            ('received', "Received"),
-        ],
-        string="Statut de la Prealerte", default='pending',
-        required=True, tracking=True,
-        group_expand='_expand_states',
-    )
-
-    @api.model
-    def _expand_states(self, states, domain):
-        return [key for key, _ in self._fields['state'].selection]
-
     # --- Matching avec le colis recu ---
     matched_package_ref = fields.Char(string="Reference du colis recu")
     matched_weight = fields.Float(string="Poids constate (kg)")
     matched_date = fields.Date(string="Date de reception")
     match_notes = fields.Text(string="Notes de rapprochement")
+
+    # --- Dimensions constatees (reprises du colis traite par Skybox) ---
+    parcel_ids = fields.One2many(
+        comodel_name='skybox.parcel', inverse_name='prealerte_id',
+        string="Colis Skybox",
+    )
+    bag_id = fields.Many2one(
+        comodel_name='stock.quant.package', string="Bag", tracking=True,
+        compute='_compute_bag', store=True, readonly=False, index=True,
+        help="Bag ou se trouve le colis (bag de destination envoye par "
+             "Skybox, sinon bag source).",
+    )
+
+    @api.depends('parcel_ids.destination_bag_id', 'parcel_ids.source_bag_id')
+    def _compute_bag(self):
+        for rec in self:
+            parcel = rec.parcel_ids[:1]
+            bag = parcel.destination_bag_id or parcel.source_bag_id
+            if bag:
+                rec.bag_id = bag
+
+    length_cm = fields.Float(
+        string="Longueur (cm)", compute='_compute_dimensions', store=True,
+        readonly=False)
+    width_cm = fields.Float(
+        string="Largeur (cm)", compute='_compute_dimensions', store=True,
+        readonly=False)
+    height_cm = fields.Float(
+        string="Hauteur (cm)", compute='_compute_dimensions', store=True,
+        readonly=False)
+    volumetric_weight = fields.Float(
+        string="Poids volumetrique (kg)", digits=(12, 3),
+        compute='_compute_dimensions', store=True, readonly=False)
+    chargeable_weight = fields.Float(
+        string="Poids taxable (kg)", digits=(12, 3),
+        compute='_compute_dimensions', store=True, readonly=False)
+
+    processing_state = fields.Selection(
+        selection=[
+            ('not_processed', "Not processed"),
+            ('processed', "Processed"),
+        ],
+        string="Traitement Skybox", default='not_processed', required=True,
+        compute='_compute_processing_state', store=True, tracking=True,
+        group_expand='_expand_processing_states',
+        help="Processed : Skybox a envoye les infos du colis (evenement "
+             "PARCEL_PROCESSED / PARCEL_UPDATED).",
+    )
+
+    @api.model
+    def _expand_processing_states(self, states, domain):
+        return [key for key, _ in self._fields['processing_state'].selection]
+
+    @api.depends('parcel_ids')
+    def _compute_processing_state(self):
+        for rec in self:
+            rec.processing_state = 'processed' if rec.parcel_ids else 'not_processed'
+
+    @api.depends('parcel_ids.length_cm', 'parcel_ids.width_cm',
+                 'parcel_ids.height_cm', 'parcel_ids.volumetric_weight',
+                 'parcel_ids.chargeable_weight')
+    def _compute_dimensions(self):
+        for rec in self:
+            parcel = rec.parcel_ids[:1]
+            if not parcel:
+                continue  # garde la saisie manuelle
+            rec.length_cm = parcel.length_cm
+            rec.width_cm = parcel.width_cm
+            rec.height_cm = parcel.height_cm
+            rec.volumetric_weight = parcel.volumetric_weight
+            rec.chargeable_weight = parcel.chargeable_weight
 
     @api.model
     def _create_from_backoffice(self, data):
@@ -317,13 +378,31 @@ class SkyboxPrealerte(models.Model):
             if not vals.get('name') or vals['name'] == "New":
                 vals['name'] = self.env['ir.sequence'].next_by_code(
                     'skybox.prealerte') or "New"
-        return super().create(vals_list)
+        records = super().create(vals_list)
+        records._fill_reception_date()
+        return records
 
-    def action_receive(self):
-        self.write({'state': 'received'})
+    def _fill_reception_date(self):
+        """Date de reception = date de creation du colis recu dans Odoo
+        (reception entrante du meme numero de tracking)."""
+        Picking = self.env['stock.picking'].sudo()
+        for rec in self.filtered('tracking_number'):
+            picking = Picking.search([
+                ('picking_type_code', '=', 'incoming'),
+                ('tracking_number', '=ilike', rec.tracking_number),
+                ('state', '!=', 'cancel'),
+            ], order='create_date asc', limit=1)
+            if not picking:
+                continue
+            date = fields.Date.context_today(rec, timestamp=picking.create_date)
+            if rec.matched_date != date:
+                rec.matched_date = date
 
-    def action_reset_pending(self):
-        self.write({'state': 'pending'})
+    @api.model
+    def _skybox_init_reception_dates(self):
+        """Remplit la date de reception des prealertes existantes."""
+        self.search([('tracking_number', '!=', False)])._fill_reception_date()
+
 
 
 class SkyboxPrealerteLine(models.Model):

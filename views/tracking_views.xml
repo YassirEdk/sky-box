@@ -37,6 +37,7 @@
                 <field name="skybox_status" widget="badge" optional="show"
                        decoration-info="skybox_status == 'receipt'"
                        decoration-success="skybox_status == 'stored'"
+                       decoration-primary="skybox_status == 'processed'"
                        decoration-danger="skybox_status == 'canceled'"/>
                 <field name="client_ref" optional="hide"/>
             </xpath>
@@ -49,7 +50,7 @@
         <field name="res_model">stock.picking</field>
         <field name="view_mode">list,form</field>
         <field name="view_id" ref="view_skybox_receipts_picking_list"/>
-        <field name="domain">[('picking_type_code', '=', 'incoming'), ('skybox_status', '=', 'receipt')]</field>
+        <field name="domain">[('picking_type_code', '=', 'incoming'), ('skybox_status', '=', 'receipt'), ('skybox_past', '=', False)]</field>
         <field name="context" eval="{'default_picking_type_id': ref('stock.picking_type_in')}"/>
     </record>
 
@@ -59,7 +60,7 @@
         <field name="res_model">stock.picking</field>
         <field name="view_mode">list,form</field>
         <field name="view_id" ref="view_skybox_receipts_picking_list"/>
-        <field name="domain">[('picking_type_code', '=', 'incoming'), ('skybox_status', '=', 'stored')]</field>
+        <field name="domain">[('picking_type_code', '=', 'incoming'), ('skybox_status', '=', 'stored'), ('skybox_past', '=', False)]</field>
     </record>
 
     <!-- Form Receipts : champs tracking (herite du form picking) -->
@@ -89,7 +90,7 @@
                 <button name="action_open_transfer" string="Transfert" type="object"
                         class="btn-secondary" invisible="skybox_status != 'stored'"/>
                 <field name="skybox_status" widget="statusbar"
-                       statusbar_visible="receipt,stored,canceled"/>
+                       statusbar_visible="receipt,stored,processed,canceled"/>
             </xpath>
             <xpath expr="//field[@name='state'][@statusbar_visible='draft,assigned,done']" position="attributes">
                 <attribute name="invisible">1</attribute>
@@ -164,6 +165,7 @@
                 <field name="action" widget="badge"
                        decoration-info="action == 'received'"
                        decoration-success="action == 'stored'"
+                       decoration-primary="action == 'processed'"
                        decoration-warning="action == 'moved'"
                        decoration-danger="action == 'canceled'"/>
                 <field name="user_id"/>

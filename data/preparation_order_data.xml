@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Reference Odoo des ordres de preparation (partnerOrderRef) -->
+        <record id="seq_skybox_preparation_order" model="ir.sequence">
+            <field name="name">Ordre de preparation Skybox</field>
+            <field name="code">skybox.preparation.order</field>
+            <field name="prefix">PREP/</field>
+            <field name="padding">5</field>
+        </record>
+    </data>
+
+    <!-- Renvoi automatique des etapes non acceptees par Skybox -->
+    <record id="cron_skybox_resend_preparation_status" model="ir.cron">
+        <field name="name">Skybox: renvoyer l'avancement des ordres de preparation</field>
+        <field name="model_id" ref="model_skybox_preparation_order"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_resend_status()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+
+    <!-- Ordres deja recus : reference Odoo -->
+    <function model="skybox.preparation.order" name="_init_references"/>
+</odoo>

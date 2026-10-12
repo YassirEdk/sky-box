@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_skybox_login_log_list" model="ir.ui.view">
+        <field name="name">skybox.login.log.list</field>
+        <field name="model">skybox.login.log</field>
+        <field name="arch" type="xml">
+            <list string="Historique de connexion" create="0" edit="0" delete="0"
+                  decoration-success="event == 'login'" decoration-muted="event == 'logout'">
+                <field name="date"/>
+                <field name="user_id" widget="many2one_avatar_user"/>
+                <field name="event" widget="badge"
+                       decoration-success="event == 'login'"
+                       decoration-muted="event == 'logout'"/>
+                <field name="source" widget="badge"
+                       decoration-primary="source == 'web'"
+                       decoration-info="source == 'mobile'"
+                       decoration-warning="source == 'rpc'"/>
+                <field name="ip" optional="show"/>
+                <field name="note" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_login_log_search" model="ir.ui.view">
+        <field name="name">skybox.login.log.search</field>
+        <field name="model">skybox.login.log</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="user_id"/>
+                <field name="ip"/>
+                <filter name="logins" string="Connexions" domain="[('event', '=', 'login')]"/>
+                <filter name="logouts" string="Deconnexions" domain="[('event', '=', 'logout')]"/>
+                <separator/>
+                <filter name="web" string="Connexions Odoo" domain="[('source', '=', 'web')]"/>
+                <filter name="api" string="Connexions API" domain="[('source', 'in', ('mobile', 'rpc'))]"/>
+                <separator/>
+                <filter name="filter_date" string="Date" date="date"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_user" string="Utilisateur" context="{'group_by': 'user_id'}"/>
+                    <filter name="group_day" string="Jour" context="{'group_by': 'date:day'}"/>
+                    <filter name="group_source" string="Type de connexion" context="{'group_by': 'source'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_skybox_login_log" model="ir.actions.act_window">
+        <field name="name">Historique de connexion</field>
+        <field name="res_model">skybox.login.log</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_skybox_login_log_search"/>
+    </record>
+
+</odoo>

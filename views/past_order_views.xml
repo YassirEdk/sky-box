@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Past orders : colis des ordres expedies (processus termine) -->
+    <record id="view_skybox_past_colis_list" model="ir.ui.view">
+        <field name="name">skybox.preparation.order.line.past.list</field>
+        <field name="model">skybox.preparation.order.line</field>
+        <field name="arch" type="xml">
+            <list string="Past orders" create="0" edit="0" delete="0">
+                <field name="tracking_number"/>
+                <field name="order_id"/>
+                <field name="skybill_number" optional="show"/>
+                <field name="order_partner_id"/>
+                <field name="order_agent_id" widget="many2one_avatar_user" optional="show"/>
+                <field name="weight" optional="show"/>
+                <field name="order_carrier"/>
+                <field name="order_carrier_tracking"/>
+                <field name="order_dispatched_at"/>
+                <button name="action_history" string="Historique" type="object"
+                        icon="fa-history" class="btn btn-sm btn-primary"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_past_colis_search" model="ir.ui.view">
+        <field name="name">skybox.preparation.order.line.past.search</field>
+        <field name="model">skybox.preparation.order.line</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="tracking_number"/>
+                <field name="order_id"/>
+                <field name="skybill_number"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_order" string="Ordre" context="{'group_by': 'order_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_skybox_past_order" model="ir.actions.act_window">
+        <field name="name">Past orders</field>
+        <field name="res_model">skybox.preparation.order.line</field>
+        <field name="view_mode">list</field>
+        <field name="view_ids" eval="[(5, 0, 0)]"/>
+        <field name="view_id" ref="view_skybox_past_colis_list"/>
+        <field name="search_view_id" ref="view_skybox_past_colis_search"/>
+        <field name="domain">[('order_id.state', '=', 'dispatched')]</field>
+        <field name="context">{'create': False}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucun colis expedie pour le moment
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_skybox_past_order"
+              name="Past orders"
+              parent="menu_skybox_root"
+              action="action_skybox_past_order"
+              sequence="16"/>
+
+    <!-- Pop-up historique d'un colis -->
+    <record id="view_skybox_colis_history_form" model="ir.ui.view">
+        <field name="name">skybox.colis.history.form</field>
+        <field name="model">skybox.colis.history</field>
+        <field name="arch" type="xml">
+            <form string="Historique du colis" create="0" edit="0">
+                <div class="o_skybox_tl_header">
+                    <div class="o_skybox_tl_header_icon"><i class="fa fa-cube" title="Colis"/></div>
+                    <div class="flex-grow-1">
+                        <h3 class="mb-0"><field name="tracking_number" readonly="1"/></h3>
+                        <div class="text-muted">
+                            Ordre <field name="order_id" readonly="1" class="d-inline"
+                                         options="{'no_open': True}"/>
+                            <span invisible="not partner_id"> · <field name="partner_id" readonly="1"
+                                  class="d-inline" options="{'no_open': True}"/></span>
+                        </div>
+                    </div>
+                    <div class="text-end" invisible="not carrier_tracking_number">
+                        <span class="badge rounded-pill text-bg-success">
+                            <i class="fa fa-truck me-1" title="Expedie"/>Expedie
+                        </span>
+                        <div class="small text-muted mt-1">
+                            <field name="carrier" readonly="1" class="d-inline"/>
+                            <field name="carrier_tracking_number" readonly="1" class="d-inline ms-1"/>
+                        </div>
+                    </div>
+                </div>
+                <field name="history_html" readonly="1" nolabel="1"/>
+                <footer>
+                    <button string="Fermer" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Mise a jour du module : ordres deja expedies -> Past orders -->
+    <function model="skybox.preparation.order" name="_init_past"/>
+
+</odoo>
