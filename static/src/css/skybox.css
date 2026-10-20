@@ -219,3 +219,154 @@
     color: var(--bs-secondary);
     margin-top: 4px;
 }
+
+/* ============ Cartes kanban Ordres de preparation ============ */
+/* Palette propre (les variables --bs-* ne sont pas definies dans le
+   backend Odoo). */
+.o_po_card {
+    --po-grey: #8a94a6;     --po-grey-rgb: 138, 148, 166;
+    --po-blue: #0d9bd3;     --po-blue-rgb: 13, 155, 211;
+    --po-indigo: #5b5fc7;   --po-indigo-rgb: 91, 95, 199;
+    --po-orange: #f0a020;   --po-orange-rgb: 240, 160, 32;
+    --po-green: #21a366;    --po-green-rgb: 33, 163, 102;
+    --po-red: #e04848;      --po-red-rgb: 224, 72, 72;
+    --po-text-muted: #6b7280;
+}
+.o_po_card {
+    --po-color: var(--po-grey);
+    --po-color-rgb: var(--po-grey-rgb);
+    position: relative;
+    padding: 14px 14px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-top: 4px solid var(--po-color);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+.o_po_card:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    transform: translateY(-2px);
+}
+.o_po_card--secondary { --po-color: var(--po-grey);   --po-color-rgb: var(--po-grey-rgb); }
+.o_po_card--info      { --po-color: var(--po-blue);   --po-color-rgb: var(--po-blue-rgb); }
+.o_po_card--primary   { --po-color: var(--po-indigo); --po-color-rgb: var(--po-indigo-rgb); }
+.o_po_card--warning   { --po-color: var(--po-orange); --po-color-rgb: var(--po-orange-rgb); }
+.o_po_card--success   { --po-color: var(--po-green);  --po-color-rgb: var(--po-green-rgb); }
+.o_po_card--danger    { --po-color: var(--po-red);    --po-color-rgb: var(--po-red-rgb); }
+.o_po_card--urgent    { box-shadow: 0 0 0 2px rgba(var(--po-red-rgb), 0.4); }
+
+/* En-tete */
+.o_po_head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+.o_po_title { min-width: 0; display: flex; flex-direction: column; }
+.o_po_name {
+    font-weight: 700;
+    font-size: 14.5px;
+    line-height: 1.25;
+    word-break: break-all;
+}
+.o_po_sub { font-size: 11.5px; color: var(--po-text-muted); margin-top: 2px; }
+.o_po_prio {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 20px;
+    background: rgba(var(--po-grey-rgb), 0.16);
+    color: #4b5563;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.o_po_prio--urgent { background: var(--po-red); color: #fff; }
+
+/* Badges */
+.o_po_tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.o_po_tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.o_po_tag--info    { background: rgba(var(--po-blue-rgb), 0.14);   color: var(--po-blue); }
+.o_po_tag--warning { background: rgba(var(--po-orange-rgb), 0.18); color: #9a6700; }
+.o_po_tag--danger  { background: rgba(var(--po-red-rgb), 0.14);    color: var(--po-red); }
+
+/* Etapes */
+.o_po_steps { display: flex; align-items: center; gap: 4px; }
+.o_po_step {
+    flex: 1 1 0;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(var(--po-grey-rgb), 0.25);
+}
+.o_po_step--done    { background: rgba(var(--po-color-rgb), 0.55); }
+.o_po_step--current { background: var(--po-color); }
+.o_po_step_label {
+    flex: 0 0 auto;
+    margin-left: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--po-color);
+}
+
+/* Avancement du picking */
+.o_po_progress { display: flex; align-items: center; gap: 8px; }
+.o_po_progress_bar {
+    flex: 1 1 auto;
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.07);
+    overflow: hidden;
+}
+.o_po_progress_fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--po-blue), var(--po-green));
+    transition: width 0.3s ease;
+}
+.o_po_progress_text { flex: 0 0 auto; font-size: 11.5px; color: var(--po-text-muted); }
+.o_po_progress_text strong { color: #1f2937; }
+
+/* Infos */
+.o_po_body { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.o_po_line { display: flex; align-items: center; min-width: 0; }
+.o_po_ico {
+    flex: 0 0 18px;
+    text-align: center;
+    margin-right: 6px;
+    color: var(--po-text-muted);
+}
+.o_po_bin {
+    font-weight: 700;
+    font-size: 12.5px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(var(--po-indigo-rgb), 0.12);
+    color: var(--po-indigo);
+}
+
+/* Pied */
+.o_po_foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(0, 0, 0, 0.1);
+    font-size: 12px;
+}
+.o_po_stats { display: flex; gap: 10px; color: var(--po-text-muted); }
+.o_po_stat strong { font-size: 13px; color: #1f2937; }
+.o_po_meta { display: flex; align-items: center; gap: 8px; }
+.o_po_date { color: var(--po-text-muted); white-space: nowrap; }
+.o_po_group { font-size: 11.5px; padding: 4px 10px; }

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_skybox_movement_list" model="ir.ui.view">
+        <field name="name">skybox.movement.list</field>
+        <field name="model">skybox.movement</field>
+        <field name="arch" type="xml">
+            <list string="Mouvements d'entrepot" create="0" edit="0"
+                  decoration-danger="state == 'refused'"
+                  decoration-warning="state == 'pending'">
+                <field name="movement_ref"/>
+                <field name="occurred_at"/>
+                <field name="tracking_number"/>
+                <field name="movement_type" widget="badge"/>
+                <field name="from_display" optional="show"/>
+                <field name="to_display"/>
+                <field name="sequence_number" optional="hide"/>
+                <field name="user_id" widget="many2one_avatar_user" optional="show"/>
+                <field name="partner_reference" optional="show"/>
+                <field name="warnings" optional="show"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'sent'"
+                       decoration-warning="state == 'pending'"
+                       decoration-danger="state == 'refused'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_movement_form" model="ir.ui.view">
+        <field name="name">skybox.movement.form</field>
+        <field name="model">skybox.movement</field>
+        <field name="arch" type="xml">
+            <form string="Mouvement d'entrepot" create="0" edit="0">
+                <header>
+                    <button name="action_resend" string="Renvoyer" type="object"
+                            class="btn-primary" invisible="state != 'refused'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="pending,sent"/>
+                </header>
+                <sheet>
+                    <div class="alert alert-danger" role="alert" invisible="state != 'refused'">
+                        Refuse par Skybox : <field name="error_code" class="d-inline"/> -
+                        <field name="message" class="d-inline"/>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="movement_ref"/></h1>
+                        <field name="movement_type"/>
+                    </div>
+                    <group>
+                        <group string="Colis">
+                            <field name="tracking_number"/>
+                            <field name="bag_code" invisible="not bag_code"/>
+                            <field name="warehouse_code"/>
+                            <field name="occurred_at"/>
+                            <field name="sequence_number"/>
+                            <field name="user_id"/>
+                        </group>
+                        <group string="Position">
+                            <field name="from_display"/>
+                            <field name="to_display"/>
+                            <field name="reason_code"/>
+                            <field name="notes"/>
+                        </group>
+                        <group string="Liens Odoo">
+                            <field name="partner_reference"/>
+                            <field name="picking_id"/>
+                            <field name="preparation_order_id"/>
+                        </group>
+                        <group string="Reponse Skybox">
+                            <field name="sent_at"/>
+                            <field name="attempts"/>
+                            <field name="duplicate"/>
+                            <field name="applied_to_position"/>
+                            <field name="warnings"/>
+                            <field name="message"/>
+                        </group>
+                    </group>
+                    <group string="JSON">
+                        <field name="from_json"/>
+                        <field name="to_json"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_skybox_movement_search" model="ir.ui.view">
+        <field name="name">skybox.movement.search</field>
+        <field name="model">skybox.movement</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="tracking_number"/>
+                <field name="movement_ref"/>
+                <field name="partner_reference"/>
+                <filter name="pending" string="A envoyer" domain="[('state', '=', 'pending')]"/>
+                <filter name="refused" string="Refuses" domain="[('state', '=', 'refused')]"/>
+                <filter name="warnings" string="Avec avertissement" domain="[('warnings', '!=', False)]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_type" string="Type" context="{'group_by': 'movement_type'}"/>
+                    <filter name="group_tracking" string="Colis" context="{'group_by': 'tracking_number'}"/>
+                    <filter name="group_state" string="Statut" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_skybox_movement" model="ir.actions.act_window">
+        <field name="name">Mouvements d'entrepot</field>
+        <field name="res_model">skybox.movement</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_skybox_movement_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucun mouvement envoye a Skybox pour le moment
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_skybox_movement"
+              name="Mouvements d'entrepot"
+              parent="menu_skybox_configuration"
+              action="action_skybox_movement"
+              sequence="25"/>
+
+    <record id="cron_skybox_send_movements" model="ir.cron">
+        <field name="name">Skybox: envoyer les mouvements d'entrepot</field>
+        <field name="model_id" ref="model_skybox_movement"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_send()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+
+</odoo>

@@ -26,6 +26,9 @@ class SkyboxTransferWizard(models.TransientModel):
         if self.new_location_id == old_location:
             raise UserError("Le nouvel emplacement est identique a l'actuel.")
         self.picking_id.location_dest_id = self.new_location_id
+        self.picking_id._skybox_movement(
+            'LOCATION_TRANSFER', self.new_location_id._skybox_position(),
+            old_location._skybox_position() if old_location else None)
         self.picking_id._log_history(
             'moved', location=self.new_location_id,
             note="De %s vers %s" % (

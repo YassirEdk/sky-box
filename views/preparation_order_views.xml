@@ -13,6 +13,7 @@
                 <field name="requested_at"/>
                 <field name="priority"/>
                 <field name="partner_id"/>
+                <field name="parent_skybill_number" string="Groupe" optional="show"/>
                 <field name="agent_id" widget="many2one_avatar_user" optional="show"/>
                 <field name="suite_number" optional="show"/>
                 <field name="skybill_number" optional="show"/>
@@ -24,10 +25,6 @@
                        decoration-warning="state in ('picking', 'picked', 'packed', 'ready')"
                        decoration-success="state == 'dispatched'"
                        decoration-muted="state == 'cancelled'"/>
-                <field name="sync_state" widget="badge" optional="show"
-                       decoration-success="sync_state == 'sent'"
-                       decoration-warning="sync_state == 'pending'"
-                       decoration-danger="sync_state == 'error'"/>
             </list>
         </field>
     </record>
@@ -59,87 +56,119 @@
                 <field name="exception_code"/>
                 <field name="sync_state"/>
                 <field name="agent_id"/>
+                <field name="parent_skybill_number"/>
+                <field name="picked_count"/>
+                <field name="pick_progress"/>
+                <field name="has_fragile"/>
+                <field name="location_summary"/>
                 <progressbar field="sync_state" sum_field="total_parcels"
                              colors='{"sent": "success", "pending": "warning", "error": "danger", "none": "muted"}'/>
                 <templates>
                     <t t-name="kanban-box">
+                        <t t-set="state" t-value="record.state.raw_value"/>
                         <t t-set="stateColor" t-value="record.has_exception.raw_value ? 'danger' : {
                             'new': 'secondary', 'picking': 'info', 'picked': 'info',
                             'packed': 'primary', 'ready': 'warning',
                             'dispatched': 'success', 'cancelled': 'danger',
-                        }[record.state.raw_value]"/>
+                        }[state]"/>
+                        <t t-set="steps" t-value="[['new', 'Nouveau'], ['picking', 'Picking'], ['picked', 'Picked'], ['packed', 'Packed'], ['ready', 'Pret']]"/>
+                        <t t-set="stepIndex" t-value="['new', 'picking', 'picked', 'packed', 'ready', 'dispatched'].indexOf(state)"/>
                         <t t-set="urgent" t-value="['HIGH', 'URGENT', 'EXPRESS'].includes((record.priority.raw_value || '').toUpperCase())"/>
-                        <div t-attf-class="oe_kanban_card oe_kanban_global_click o_skybox_card o_skybox_card--#{stateColor}">
-                            <div class="o_skybox_card_head">
-                                <div class="o_skybox_card_ref text-truncate">
-                                    <span class="o_skybox_ref"><field name="name"/></span>
-                                    <small t-if="record.reference.raw_value" class="o_skybox_seq text-truncate">
-                                        <i class="fa fa-hashtag me-1" title="Reference"/>
-                                        <field name="reference"/>
-                                    </small>
+                        <t t-set="total" t-value="record.total_parcels.raw_value"/>
+                        <div t-attf-class="oe_kanban_card oe_kanban_global_click o_po_card o_po_card--#{stateColor} #{urgent ? 'o_po_card--urgent' : ''}">
+                            <!-- En-tete -->
+                            <div class="o_po_head">
+                                <div class="o_po_title">
+                                    <span class="o_po_name"><field name="name"/></span>
+                                    <span class="o_po_sub">
+                                        <span t-if="record.reference.raw_value"><i class="fa fa-hashtag" title="Reference"/> <field name="reference"/></span>
+                                    </span>
                                 </div>
                                 <span t-if="record.priority.raw_value"
-                                      t-attf-class="badge rounded-pill text-bg-#{urgent ? 'danger' : 'light'}">
+                                      t-attf-class="o_po_prio #{urgent ? 'o_po_prio--urgent' : ''}">
                                     <i t-if="urgent" class="fa fa-bolt me-1" title="Urgent"/>
                                     <field name="priority"/>
                                 </span>
                             </div>
-                            <div t-if="record.has_exception.raw_value" class="alert alert-danger py-1 px-2 mb-2 small" role="status">
-                                <i class="fa fa-exclamation-triangle me-1" title="Exception"/>
-                                Exception <field name="exception_code"/>
+
+                            <!-- Badges -->
+                            <div t-if="record.parent_skybill_number.raw_value or record.has_fragile.raw_value or record.has_exception.raw_value"
+                                 class="o_po_tags">
+                                <span t-if="record.has_exception.raw_value" class="o_po_tag o_po_tag--danger">
+                                    <i class="fa fa-exclamation-triangle" title="Exception"/> <field name="exception_code"/>
+                                </span>
+                                <span t-if="record.parent_skybill_number.raw_value" class="badge rounded-pill text-bg-info o_po_group">
+                                    <i class="fa fa-object-group me-1" title="Commande groupee"/><field name="parent_skybill_number"/>
+                                </span>
+                                <span t-if="record.has_fragile.raw_value" class="o_po_tag o_po_tag--warning">
+                                    <i class="fa fa-glass" title="Fragile"/> Fragile
+                                </span>
                             </div>
-                            <div class="o_skybox_card_body">
+
+                            <!-- Etapes -->
+                            <div t-if="stepIndex >= 0" class="o_po_steps">
+                                <t t-foreach="steps" t-as="step" t-key="step[0]">
+                                    <span t-attf-class="o_po_step #{step_index &lt; stepIndex ? 'o_po_step--done' : ''} #{step_index == stepIndex ? 'o_po_step--current' : ''}"
+                                          t-att-title="step[1]"/>
+                                </t>
+                                <span class="o_po_step_label"><field name="state"/></span>
+                            </div>
+
+                            <!-- Avancement du picking -->
+                            <div t-if="total" class="o_po_progress">
+                                <div class="o_po_progress_bar">
+                                    <div class="o_po_progress_fill" t-attf-style="width: #{record.pick_progress.raw_value}%;"/>
+                                </div>
+                                <span class="o_po_progress_text">
+                                    <strong><field name="picked_count"/></strong>/<t t-out="total"/> preleve(s)
+                                </span>
+                            </div>
+
+                            <!-- Infos -->
+                            <div class="o_po_body">
+                                <div t-if="record.location_summary.raw_value" class="o_po_line">
+                                    <i class="fa fa-th-large o_po_ico" title="Emplacement"/>
+                                    <span class="o_po_bin"><field name="location_summary"/></span>
+                                </div>
                                 <div t-if="record.partner_id.raw_value or record.ship_to_name.raw_value"
-                                     class="o_skybox_line text-truncate">
-                                    <i class="fa fa-user o_skybox_ico" title="Client"/>
+                                     class="o_po_line text-truncate">
+                                    <i class="fa fa-user o_po_ico" title="Client"/>
                                     <t t-if="record.partner_id.raw_value"><field name="partner_id"/></t>
                                     <t t-else=""><field name="ship_to_name"/></t>
-                                    <small t-if="record.suite_number.raw_value" class="text-muted ms-1">
-                                        (<field name="suite_number"/>)
-                                    </small>
+                                    <small t-if="record.suite_number.raw_value" class="text-muted ms-1"><field name="suite_number"/></small>
                                 </div>
                                 <div t-if="record.ship_to_city.raw_value or record.ship_to_country_id.raw_value"
-                                     class="o_skybox_line text-truncate">
-                                    <i class="fa fa-map-marker o_skybox_ico" title="Destination"/>
+                                     class="o_po_line text-truncate">
+                                    <i class="fa fa-map-marker o_po_ico" title="Destination"/>
                                     <field name="ship_to_city"/>
                                     <t t-if="record.ship_to_city.raw_value and record.ship_to_country_id.raw_value">, </t>
                                     <field name="ship_to_country_id"/>
                                 </div>
-                                <div t-if="record.skybill_number.raw_value" class="o_skybox_line text-truncate">
-                                    <i class="fa fa-file-text-o o_skybox_ico" title="Skybill"/>
-                                    <field name="skybill_number"/>
-                                </div>
-                                <div t-if="record.warehouse_id.raw_value" class="o_skybox_line text-truncate">
-                                    <i class="fa fa-building o_skybox_ico" title="Entrepot"/>
-                                    <field name="warehouse_id"/>
-                                </div>
                                 <div t-if="record.carrier.raw_value or record.carrier_tracking_number.raw_value"
-                                     class="o_skybox_line text-truncate">
-                                    <i class="fa fa-truck o_skybox_ico" title="Transporteur"/>
+                                     class="o_po_line text-truncate">
+                                    <i class="fa fa-truck o_po_ico" title="Transporteur"/>
                                     <field name="carrier"/>
-                                    <span t-if="record.carrier_tracking_number.raw_value" class="text-muted ms-1">
-                                        <field name="carrier_tracking_number"/>
-                                    </span>
+                                    <span t-if="record.carrier_tracking_number.raw_value" class="text-muted ms-1"><field name="carrier_tracking_number"/></span>
                                 </div>
                             </div>
-                            <div class="o_skybox_card_foot">
-                                <span class="text-muted">
-                                    <i class="fa fa-cubes me-1" title="Colis"/>
-                                    <strong class="text-body"><field name="total_parcels"/></strong> colis
-                                    <t t-if="record.total_weight.raw_value">
-                                        · <field name="total_weight"/> kg
-                                    </t>
+
+                            <!-- Pied -->
+                            <div class="o_po_foot">
+                                <span class="o_po_stats">
+                                    <span class="o_po_stat"><i class="fa fa-cubes" title="Colis"/> <strong><t t-out="total"/></strong></span>
+                                    <span t-if="record.total_weight.raw_value" class="o_po_stat">
+                                        <i class="fa fa-balance-scale" title="Poids"/> <field name="total_weight"/> kg
+                                    </span>
                                 </span>
-                                <span class="d-flex align-items-center gap-2">
-                                    <field name="agent_id" widget="many2one_avatar_user"/>
+                                <span class="o_po_meta">
                                     <i t-if="record.sync_state.raw_value == 'pending'"
                                        class="fa fa-clock-o text-warning" title="En attente d'envoi a Skybox"/>
                                     <i t-if="record.sync_state.raw_value == 'error'"
                                        class="fa fa-exclamation-circle text-danger" title="Envoi refuse par Skybox"/>
-                                    <span t-if="record.requested_at.raw_value" class="text-muted">
-                                        <i class="fa fa-calendar me-1" title="Demande le"/>
+                                    <span t-if="record.requested_at.raw_value" class="o_po_date" title="Demande le">
                                         <field name="requested_at" widget="date"/>
                                     </span>
+                                    <field name="agent_id" widget="many2one_avatar_user"/>
                                 </span>
                             </div>
                         </div>
@@ -155,28 +184,99 @@
         <field name="arch" type="xml">
             <form string="Ordre de preparation" create="0">
                 <header>
+                    <field name="is_group" invisible="1"/>
+                    <field name="parent_id" invisible="1"/>
+                    <field name="cancel_blocked" invisible="1"/>
+                    <field name="cancel_state" invisible="1"/>
+                    <field name="sync_state" invisible="1"/>
+                    <button name="action_cancel_confirm" string="Confirmer l'annulation" type="object"
+                            class="btn-danger" invisible="parent_id or cancel_state != 'requested'"
+                            confirm="Confirmer l'annulation demandee par Skybox ? L'ordre est arrete et les colis preleves sont remis a leur emplacement."/>
+                    <button name="action_cancel_refuse" string="Refuser l'annulation" type="object"
+                            invisible="parent_id or cancel_state != 'requested'"
+                            confirm="Refuser l'annulation ? La preparation continue a l'etape atteinte (motif du refus envoye a Skybox)."/>
                     <button name="action_picking" string="Commencer le picking" type="object"
-                            class="btn-primary" invisible="state != 'new'"/>
+                            class="btn-primary" invisible="cancel_blocked or is_group or state != 'new'"/>
                     <button name="action_picked" string="Picked" type="object"
-                            class="btn-primary" invisible="state not in ('new', 'picking')"/>
+                            class="btn-primary" invisible="cancel_blocked or is_group or state not in ('new', 'picking')"/>
                     <button name="action_packed" string="Packed" type="object"
-                            class="btn-primary" invisible="state not in ('new', 'picking', 'picked')"/>
+                            class="btn-primary" invisible="cancel_blocked or is_group or state not in ('new', 'picking', 'picked')"/>
                     <button name="action_ready" string="Pret a expedier" type="object"
-                            invisible="state not in ('new', 'picking', 'picked', 'packed')"/>
+                            invisible="cancel_blocked or is_group or state not in ('new', 'picking', 'picked', 'packed')"/>
                     <button name="action_dispatched" string="Expedie" type="object"
-                            class="btn-primary" invisible="state != 'ready'"
+                            class="btn-primary" invisible="cancel_blocked or parent_id or state != 'ready'"
                             confirm="Le transporteur a pris le carton ? Le numero de suivi sera envoye au client."/>
                     <button name="action_exception" string="Signaler une exception" type="object"
-                            class="btn-danger" invisible="state in ('dispatched', 'cancelled')"/>
+                            class="btn-danger" invisible="cancel_blocked or state in ('dispatched', 'cancelled')"/>
                     <button name="action_resend" string="Renvoyer a Skybox" type="object"
                             invisible="not pending_status"/>
+                    <button name="action_reset_new" string="Remettre en Nouveau" type="object"
+                            class="btn-primary" icon="fa-undo" invisible="state != 'cancelled'"
+                            confirm="Remettre cet ordre en Nouveau ? Le picking est a refaire. Si Skybox l'a annule ou ne le connait pas, ses etapes ne seront pas acceptees par Skybox."/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="new,picking,picked,packed,ready,dispatched"/>
                 </header>
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_order_history" type="object" class="oe_stat_button"
+                                icon="fa-history" string="Historique"/>
+                        <button name="action_open_group" type="object" class="oe_stat_button"
+                                icon="fa-object-group" invisible="not parent_id">
+                            <div class="o_stat_info">
+                                <span class="o_stat_text">Commande groupee</span>
+                                <span class="o_stat_value"><field name="parent_skybill_number"/></span>
+                            </div>
+                        </button>
+                        <button name="action_open_group" type="object" class="oe_stat_button"
+                                icon="fa-cubes" invisible="not is_group">
+                            <field name="child_count" widget="statinfo" string="Ordres"/>
+                        </button>
+                    </div>
+                    <div class="alert alert-info" role="status" invisible="not is_group">
+                        <i class="fa fa-object-group me-1" title="Commande groupee"/>
+                        Commande groupee (consolidation) : un ordre par colis. Son statut suit
+                        ses ordres et est envoye a Skybox ; l'expedition (un seul carton) se fait ici
+                        quand tous les ordres sont prets.
+                    </div>
+                    <div class="alert alert-info" role="status" invisible="not parent_id">
+                        <i class="fa fa-object-group me-1" title="Commande groupee"/>
+                        Ordre de la commande groupee
+                        <field name="parent_id" class="d-inline fw-bold" readonly="1"/>
+                        (Skybill <field name="parent_skybill_number" class="d-inline"/>) :
+                        l'expedition se fait sur la commande groupee.
+                    </div>
                     <div class="alert alert-danger" role="alert"
                          invisible="state != 'cancelled'">
                         Ordre annule par Skybox : <field name="cancel_reason" class="d-inline"/>
+                    </div>
+                    <div class="alert alert-warning" role="alert"
+                         invisible="parent_id or cancel_state != 'requested'">
+                        <i class="fa fa-ban me-1" title="Annulation demandee"/>
+                        <strong>Skybox demande l'annulation de cet ordre</strong>
+                        (<field name="cancel_requested_by" class="d-inline"/>) :
+                        <field name="cancel_reason" class="d-inline"/>.
+                        Etapes bloquees : confirmez l'annulation ou refusez-la.
+                        <div class="mt-2">
+                            Motif du refus (optionnel) :
+                            <field name="cancel_refuse_message" class="d-inline-block w-50"
+                                   placeholder="ex. Colis deja emballe"/>
+                        </div>
+                        <div invisible="not cancel_decision">
+                            Decision <field name="cancel_decision" class="d-inline"/> pas encore
+                            acceptee par Skybox : nouvel essai automatique.
+                            <field name="cancel_sync_message" class="d-inline"/>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning" role="alert"
+                         invisible="not parent_id or not cancel_blocked">
+                        <i class="fa fa-ban me-1" title="Annulation demandee"/>
+                        Skybox demande l'annulation de la commande groupee : decision a prendre
+                        sur la commande groupee.
+                    </div>
+                    <div class="alert alert-info" role="status"
+                         invisible="cancel_state != 'refused'">
+                        Annulation demandee par Skybox puis refusee : la preparation continue.
+                        <field name="cancel_sync_message" class="d-inline"/>
                     </div>
                     <div class="alert alert-warning" role="alert"
                          invisible="not has_exception">
@@ -189,8 +289,8 @@
                         acceptee par Skybox : nouvel essai automatique toutes les 5 minutes.
                     </div>
                     <div class="alert alert-danger" role="alert"
-                         invisible="sync_state != 'error'">
-                        Envoi refuse par Skybox, voir "Reponse Skybox".
+                         invisible="sync_state != 'error' or state == 'cancelled'">
+                        Envoi refuse par Skybox : <field name="sync_message" class="d-inline"/>
                     </div>
                     <div class="oe_title">
                         <h1><field name="name"/></h1>
@@ -206,12 +306,8 @@
                             <field name="requested_by"/>
                             <field name="requested_at"/>
                             <field name="cancelled_at" invisible="not cancelled_at"/>
-                        </group>
-                        <group string="Envoi Skybox">
-                            <field name="sync_state"/>
-                            <field name="last_sent_status"/>
-                            <field name="sync_date"/>
-                            <field name="sync_message"/>
+                            <field name="cancel_requested_at" invisible="not cancel_requested_at"/>
+                            <field name="cancel_reached_step" invisible="not cancel_reached_step"/>
                         </group>
                         <group string="Skybill">
                             <field name="skybill_number"/>
@@ -238,15 +334,22 @@
                         <page string="Colis a preparer" name="lines">
                             <field name="line_ids">
                                 <list editable="bottom" create="0" delete="0">
+                                    <field name="parcel_state" widget="badge"
+                                           column_invisible="not parent.is_group"
+                                           decoration-info="parcel_state == 'new'"
+                                           decoration-warning="parcel_state in ('picking', 'picked', 'packed', 'ready')"
+                                           decoration-success="parcel_state == 'dispatched'"
+                                           decoration-muted="parcel_state == 'cancelled'"/>
+                                    <field name="parcel_order_id" optional="show"
+                                           column_invisible="not parent.is_group"/>
                                     <field name="pick_state"/>
                                     <field name="tracking_number" readonly="1"/>
                                     <field name="parcel_id" optional="hide"/>
-                                    <field name="current_bag_code" readonly="1"/>
-                                    <field name="zone_code" readonly="1"/>
-                                    <field name="aisle_code" readonly="1"/>
-                                    <field name="rack_code" readonly="1"/>
-                                    <field name="location_code" readonly="1"/>
-                                    <field name="location_id" optional="show"/>
+                                    <field name="location_id" optional="hide"/>
+                                    <field name="wh_location_id" column_invisible="1"/>
+                                    <field name="current_place"
+                                           decoration-bf="wh_location_id"
+                                           decoration-warning="not wh_location_id"/>
                                     <field name="weight" readonly="1"/>
                                     <field name="length_cm" optional="hide" readonly="1"/>
                                     <field name="width_cm" optional="hide" readonly="1"/>
@@ -254,6 +357,21 @@
                                     <field name="fragile" readonly="1"/>
                                     <button name="action_history" type="object"
                                             icon="fa-history" title="Historique du colis"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Ordres du regroupement" name="children" invisible="not is_group">
+                            <field name="child_ids" readonly="1">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="skybill_number"/>
+                                    <field name="agent_id" widget="many2one_avatar_user"/>
+                                    <field name="total_weight"/>
+                                    <field name="state" widget="badge"
+                                           decoration-info="state == 'new'"
+                                           decoration-warning="state in ('picking', 'picked', 'packed', 'ready')"
+                                           decoration-success="state == 'dispatched'"
+                                           decoration-muted="state == 'cancelled'"/>
                                 </list>
                             </field>
                         </page>
@@ -316,6 +434,8 @@
                         domain="[('state', 'in', ('new', 'picking', 'picked', 'packed', 'ready'))]"/>
                 <filter name="sync_problem" string="Envoi Skybox a revoir"
                         domain="[('sync_state', 'in', ('pending', 'error'))]"/>
+                <filter name="cancel_requested" string="Annulation demandee"
+                        domain="[('cancel_state', '=', 'requested')]"/>
                 <filter name="cancelled" string="Annules"
                         domain="[('state', '=', 'cancelled')]"/>
                 <group expand="0" string="Regrouper par">
@@ -331,11 +451,25 @@
         <field name="name">Ordres de preparation</field>
         <field name="res_model">skybox.preparation.order</field>
         <field name="view_mode">kanban,list,form</field>
-        <field name="domain">[('state', '!=', 'dispatched')]</field>
+        <field name="domain">[('state', '!=', 'dispatched'), ('is_group', '=', False)]</field>
         <field name="search_view_id" ref="view_skybox_preparation_order_search"/>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Aucun ordre de preparation recu de Skybox
+            </p>
+        </field>
+    </record>
+
+    <record id="action_skybox_group_order" model="ir.actions.act_window">
+        <field name="name">Commandes groupees</field>
+        <field name="res_model">skybox.preparation.order</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('is_group', '=', True)]</field>
+        <field name="context">{'create': False}</field>
+        <field name="search_view_id" ref="view_skybox_preparation_order_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucune commande groupee (consolidation) pour le moment
             </p>
         </field>
     </record>

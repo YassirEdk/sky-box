@@ -22,3 +22,6 @@ from . import picker_log
 from . import login_log
 from . import colis_history
 from . import res_config_settings
+from . import ir_http
+from . import track
+from . import skybox_movement

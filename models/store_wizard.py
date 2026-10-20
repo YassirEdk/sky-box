@@ -19,6 +19,9 @@ class SkyboxStoreWizard(models.TransientModel):
     def action_confirm(self):
         """Enregistre le bag / l'emplacement et passe la reception en 'stored'."""
         self.ensure_one()
+        was_stored = self.picking_id.skybox_status == 'stored'
+        old_location = self.picking_id.location_dest_id
+        old_bag = self.picking_id.bag
         self.picking_id.write({
             'bag': self.bag.id,
             'location_dest_id': self.location_dest_id.id,
@@ -26,4 +29,8 @@ class SkyboxStoreWizard(models.TransientModel):
         })
         self.picking_id._log_history(
             'stored', location=self.location_dest_id, bag=self.bag)
+        if self.location_dest_id:
+            self.picking_id._skybox_store_movement(
+                self.location_dest_id, bag=old_bag or self.bag,
+                was_stored=was_stored, old_location=old_location)
         return {'type': 'ir.actions.act_window_close'}

@@ -91,6 +91,36 @@ class StockQuantPackage(models.Model):
         return result
 
     @api.model
+    def _skybox_bags_to_store(self, bag=None):
+        """Bags a ranger (app mobile) : bags dont des colis ont ete traites
+        par Skybox (Processed) et ne sont pas encore stockes, avec ces colis.
+        bag : limiter a ce bag."""
+        domain = [
+            ('picking_type_code', '=', 'incoming'),
+            ('skybox_status', '=', 'processed'),
+            ('bag', '!=', False),
+            ('state', '!=', 'cancel'),
+        ]
+        if bag:
+            domain.append(('bag', '=', bag.id))
+        pickings = self.env['stock.picking'].search(domain, order='bag, id')
+        result = []
+        for bag in pickings.mapped('bag'):
+            prealertes = {(pre.tracking_number or '').lower(): pre
+                          for pre in bag.skybox_prealerte_ids}
+            parcels = [bag._skybox_colis_dict(
+                prealertes.get((p.tracking_number or '').lower(), False), p)
+                for p in pickings.filtered(lambda p, b=bag: p.bag == b)]
+            result.append({
+                'bag': bag.name,
+                'bag_id': bag.id,
+                'skybox_status': bag.skybox_bag_status or None,
+                'count': len(parcels),
+                'parcels': parcels,
+            })
+        return result
+
+    @api.model
     def _skybox_colis_dict(self, prealerte, picking):
         partner = (prealerte.partner_id if prealerte else False) or (
             picking.client_id if picking else False)

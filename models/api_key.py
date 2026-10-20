@@ -8,6 +8,8 @@ import requests
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
+from .skybox_event import format_skybox_datetime
+
 _logger = logging.getLogger(__name__)
 
 
@@ -236,7 +238,7 @@ class SkyboxApiKey(models.Model):
 
         now = fields.Datetime.now()
         user = self.env.user
-        received_at = now.strftime('%Y-%m-%dT%H:%M:%S')
+        received_at = format_skybox_datetime(self.env, now)
         warehouse_code = self.warehouse_code or (
             user.warehouse_id.code if user.warehouse_id else '')
         operator = self.operator_code or user.login

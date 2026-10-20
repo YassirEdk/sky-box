@@ -34,14 +34,18 @@ entrepots disponibles dans le module Inventory.
         'views/skybox_event_views.xml',
         'views/skybox_parcel_views.xml',
         'views/preparation_order_views.xml',
+        'views/track_order_views.xml',
         'views/past_order_views.xml',
         'views/res_config_settings_views.xml',
+        'views/skybox_movement_views.xml',
         'views/picker_log_views.xml',
         'data/preparation_order_data.xml',
+        'data/parcel_last_update_init.xml',
     ],
     'assets': {
         'web.assets_backend': [
             'skybox/static/src/css/skybox.css',
+            'skybox/static/src/js/server_timezone.js',
             'skybox/static/src/js/password_eye_field.js',
             'skybox/static/src/xml/password_eye_field.xml',
         ],

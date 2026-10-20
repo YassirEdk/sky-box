@@ -40,7 +40,7 @@
                 <header>
                     <button name="action_reprocess" string="Retraiter"
                             type="object" class="btn-primary"
-                            invisible="state == 'accepted'"/>
+                            invisible="state == 'accepted' and ack_status != 'DUPLICATE'"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="received,accepted"/>
                 </header>
@@ -54,6 +54,7 @@
                             <field name="contract_version"/>
                             <field name="partner_code"/>
                             <field name="occurred_at"/>
+                            <field name="enqueued_at"/>
                             <field name="sent_at"/>
                             <field name="attempt"/>
                             <field name="api_key_id"/>

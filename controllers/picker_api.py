@@ -64,6 +64,8 @@ class SkyboxPickerApi(SkyboxLoginController):
             'requested_at': _dt(order.requested_at),
             'has_exception': order.has_exception,
             'sync_state': order.sync_state,
+            # Skybox demande l'annulation : etapes et scans bloques.
+            'cancel_requested': order._cancel_blocked(),
         }
 
     def _order_detail(self, order):
@@ -90,6 +92,9 @@ class SkyboxPickerApi(SkyboxLoginController):
                 'aisle': line.aisle_code or None,
                 'rack': line.rack_code or None,
                 'location': line.location_id.complete_name or line.location_code or None,
+                'wh_location': line.wh_location_id.complete_name or None,
+                'wh_location_id': line.wh_location_id.id or None,
+                'wh_bag': line.wh_bag_id.name or None,
                 'weight': line.weight,
                 'fragile': line.fragile,
                 'pick_state': line.pick_state or None,
@@ -98,7 +103,7 @@ class SkyboxPickerApi(SkyboxLoginController):
         return data
 
     def _step_allowed(self, order, step):
-        if order.state in ('dispatched', 'cancelled'):
+        if order.state in ('dispatched', 'cancelled') or order._cancel_blocked():
             return False
         ranks = list(STEP_ACTIONS)
         current = ranks.index(order.state) if order.state in ranks else -1
@@ -107,7 +112,9 @@ class SkyboxPickerApi(SkyboxLoginController):
     @http.route('/skybox/api/orders', type='json', auth='public',
                 methods=['POST'], csrf=False)
     def api_orders(self, **kwargs):
-        """Ordres de preparation en cours du picker connecte.
+        """Ordres de preparation en cours du picker connecte, avec leurs
+        colis ("lines") et les etapes possibles ("next_steps").
+        Les statuts se renvoient ensuite avec POST /skybox/api/order/step.
 
         En-tete: Authorization: Bearer <access_token>
         Corps JSON (optionnel): {"state": "new"}
@@ -125,7 +132,7 @@ class SkyboxPickerApi(SkyboxLoginController):
         return {
             'success': True,
             'count': len(orders),
-            'orders': [self._order_summary(o) for o in orders],
+            'orders': [self._order_detail(o) for o in orders],
         }
 
     @http.route('/skybox/api/order', type='json', auth='public',
@@ -158,25 +165,9 @@ class SkyboxPickerApi(SkyboxLoginController):
         order, error = self._order_for(user, kwargs)
         if error:
             return error
-        tracking = (kwargs.get('tracking_number') or '').strip()
-        if not tracking:
-            return {'success': False, 'error': 'missing_tracking_number'}
-        pick_state = (kwargs.get('pick_state') or 'PICKED').upper()
-        if pick_state not in PICK_STATES:
-            return {'success': False, 'error': 'invalid_pick_state'}
-        if order.state not in ('new', 'picking'):
-            return {'success': False, 'error': 'order_not_in_picking',
-                    'state': order.state}
-        line = order.line_ids.filtered(
-            lambda l: (l.tracking_number or '').lower() == tracking.lower())[:1]
-        if not line:
-            return {'success': False, 'error': 'parcel_not_in_order'}
-        try:
-            if order.state == 'new':
-                order.action_picking()
-            line.pick_state = pick_state
-        except UserError as e:
-            return {'success': False, 'error': 'step_refused', 'message': str(e)}
+        line, error = self._scan_line(order, kwargs)
+        if error:
+            return error
         return dict(self._order_summary(order), success=True,
                     line_id=line.id, tracking_number=line.tracking_number,
                     pick_state=line.pick_state)
@@ -184,31 +175,130 @@ class SkyboxPickerApi(SkyboxLoginController):
     @http.route('/skybox/api/order/step', type='json', auth='public',
                 methods=['POST'], csrf=False)
     def api_order_step(self, **kwargs):
-        """Passe l'ordre a l'etape suivante et l'envoie a Skybox.
+        """Passe un ou plusieurs ordres a l'etape suivante et l'envoie a
+        Skybox.
 
-        Corps JSON: {"order_id": 12,
-                     "step": "picking" | "picked" | "packed" | "ready",
-                     "package_code": "..." (optionnel, a l'etape packed)}
+        En-tete: Authorization: Bearer <access_token>  (-> picker de l'action)
+        Corps JSON attendu:
+            {"orders": [
+                {"order_id": 12, "step": "picked",
+                 "parcels": [{"tracking_number": "...",
+                              "pick_state": "MISSING"}]},
+                {"order": "PO-0001", "step": "packed",
+                 "package_code": "..."}]}
+        (un seul ordre : {"order_id", "step", "package_code"} accepte)
+        step : "picking" | "picked" | "packed" | "ready".
+        parcels (optionnel, ordre Nouveau ou Picking) : etat de prelevement
+        des colis ("PICKED" | "MISSING" | "DAMAGED"), applique avant l'etape ;
+        a "picked", les colis non scannes passent en PICKED.
+        Chaque ordre est traite seul : en cas d'erreur, rien n'est modifie
+        sur cet ordre et les autres continuent.
         L'expedition (transporteur + suivi) se fait dans Odoo.
         """
         user, error = self._agent(kwargs)
         if error:
             return error
-        order, error = self._order_for(user, kwargs)
-        if error:
-            return error
-        step = (kwargs.get('step') or '').strip().lower()
+        items = kwargs.get('orders')
+        if items is None:
+            order, error = self._order_for(user, kwargs)
+            if error:
+                return error
+            return self._step_order(order, kwargs)
+        if not isinstance(items, list) or not items:
+            return {'success': False, 'error': 'missing_orders'}
+
+        results = []
+        for item in items:
+            item = item if isinstance(item, dict) else {}
+            order, error = self._order_for(user, item)
+            result = error or self._step_order(order, item)
+            result.setdefault('order_id', item.get('order_id'))
+            result.setdefault('order', item.get('order'))
+            results.append(result)
+        done = [r for r in results if r['success']]
+        return {
+            'success': len(done) == len(results),
+            'agent': user.name,
+            'agent_id': user.id,
+            'date': _dt(fields.Datetime.now()),
+            'count': len(results),
+            'done': len(done),
+            'failed': len(results) - len(done),
+            'orders': results,
+        }
+
+    def _scan_line(self, order, item):
+        """Etat de prelevement d'un colis de l'ordre (passe un ordre Nouveau
+        en Picking). Retourne (ligne, None) ou (None, erreur)."""
+        tracking = (item.get('tracking_number') or '').strip()
+        if not tracking:
+            return None, {'success': False, 'error': 'missing_tracking_number'}
+        pick_state = (item.get('pick_state') or 'PICKED').upper()
+        if pick_state not in PICK_STATES:
+            return None, {'success': False, 'error': 'invalid_pick_state',
+                          'tracking_number': tracking}
+        if order.state not in ('new', 'picking'):
+            return None, {'success': False, 'error': 'order_not_in_picking',
+                          'state': order.state}
+        if order._cancel_blocked():
+            return None, {'success': False, 'error': 'cancel_requested',
+                          'message': "Skybox demande l'annulation de cet "
+                                     "ordre : attendez la decision du "
+                                     "responsable."}
+        line = order.line_ids.filtered(
+            lambda l: (l.tracking_number or '').lower() == tracking.lower())[:1]
+        if not line:
+            return None, {'success': False, 'error': 'parcel_not_in_order',
+                          'tracking_number': tracking}
+        try:
+            if order.state == 'new':
+                order.action_picking()
+            line.pick_state = pick_state
+        except UserError as e:
+            return None, {'success': False, 'error': 'step_refused',
+                          'message': str(e)}
+        return line, None
+
+    def _step_order(self, order, item):
+        """Colis (optionnel) puis etape d'un ordre, en une seule fois : en cas
+        d'erreur, l'ordre est remis dans son etat initial."""
+        step = (item.get('step') or '').strip().lower()
         if step not in STEP_ACTIONS:
             return {'success': False, 'error': 'invalid_step',
                     'allowed': list(STEP_ACTIONS)}
-        if not self._step_allowed(order, step):
-            return {'success': False, 'error': 'step_not_allowed',
-                    'state': order.state}
+        parcels = item.get('parcels') or []
+        if not isinstance(parcels, list):
+            return {'success': False, 'error': 'invalid_parcels'}
         try:
-            if step == 'packed' and kwargs.get('package_code'):
-                order.package_code = kwargs['package_code']
-            getattr(order, STEP_ACTIONS[step])()
+            with request.env.cr.savepoint():
+                for parcel in parcels:
+                    _line, error = self._scan_line(
+                        order, parcel if isinstance(parcel, dict) else {})
+                    if error:
+                        raise _StepAborted(error)
+                if not self._step_allowed(order, step):
+                    raise _StepAborted({'success': False,
+                                        'error': 'step_not_allowed',
+                                        'state': order.state})
+                if step == 'packed' and item.get('package_code'):
+                    order.package_code = item['package_code']
+                getattr(order, STEP_ACTIONS[step])()
+        except _StepAborted as e:
+            order.invalidate_recordset()
+            order.line_ids.invalidate_recordset()
+            return e.error
         except UserError as e:
-            return {'success': False, 'error': 'step_refused', 'message': str(e)}
-        return dict(self._order_summary(order), success=True,
+            order.invalidate_recordset()
+            order.line_ids.invalidate_recordset()
+            return {'success': False, 'error': 'step_refused',
+                    'message': str(e)}
+        return dict(self._order_detail(order), success=True,
                     sync_message=order.sync_message or None)
+
+
+class _StepAborted(Exception):
+    """Annule les modifications d'un ordre (savepoint) avec cette erreur."""
+
+    def __init__(self, error):
+        super().__init__(error.get('error'))
+        self.error = error

@@ -59,6 +59,35 @@ class StockPicking(models.Model):
         for picking in self:
             picking.history_count = len(picking.history_ids)
 
+    def _skybox_parcel_info(self):
+        """(tracking, code entrepot Skybox) de la reception."""
+        self.ensure_one()
+        parcel = self.env['skybox.parcel'].sudo().search(
+            [('tracking_number', '=ilike', self.tracking_number or '')], limit=1)
+        warehouse = self.picking_type_id.warehouse_id
+        code = parcel.warehouse_code or warehouse.skybox_code or False
+        return self.tracking_number, code
+
+    def _skybox_movement(self, movement_type, to, from_=None, **extra):
+        """Envoie un mouvement d'entrepot a Skybox pour ces receptions."""
+        Movement = self.env['skybox.movement']
+        for picking in self.filtered('tracking_number'):
+            tracking, wh_code = picking._skybox_parcel_info()
+            Movement._record(movement_type, tracking, to, from_,
+                             warehouse_code=wh_code, picking_id=picking.id,
+                             partner_reference=picking.name, **extra)
+
+    def _skybox_store_movement(self, location, bag=False, was_stored=False,
+                               old_location=False, note=False):
+        """Rangement : STORED (premiere fois) ou LOCATION_TRANSFER."""
+        if was_stored and old_location:
+            self._skybox_movement('LOCATION_TRANSFER', location._skybox_position(),
+                                  old_location._skybox_position(), notes=note)
+        else:
+            self._skybox_movement('STORED', location._skybox_position(),
+                                  {'bagCode': bag.name} if bag else None,
+                                  reason_code='PUTAWAY', notes=note)
+
     def _log_history(self, action, location=False, bag=False, note=False):
         """Ajoute une ligne d'historique (qui, quand, ou)."""
         self.env['skybox.picking.history'].create([{

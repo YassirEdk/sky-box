@@ -15,7 +15,10 @@ access_skybox_event,skybox.event,model_skybox_event,base.group_user,1,1,0,0
 access_skybox_parcel,skybox.parcel,model_skybox_parcel,base.group_user,1,1,1,0
 access_skybox_parcel_line,skybox.parcel.line,model_skybox_parcel_line,base.group_user,1,1,1,1
 access_skybox_preparation_order,skybox.preparation.order,model_skybox_preparation_order,base.group_user,1,1,1,0
+access_skybox_track,skybox.track,model_skybox_track,base.group_user,1,0,0,0
 access_skybox_preparation_order_line,skybox.preparation.order.line,model_skybox_preparation_order_line,base.group_user,1,1,1,1
 access_skybox_picker_log,skybox.picker.log,model_skybox_picker_log,base.group_user,1,0,0,0
 access_skybox_login_log,skybox.login.log,model_skybox_login_log,base.group_system,1,0,0,0
 access_skybox_colis_history,skybox.colis.history,model_skybox_colis_history,base.group_user,1,1,1,1
+access_skybox_movement,skybox.movement,model_skybox_movement,base.group_user,1,0,0,0
+access_skybox_movement_system,skybox.movement.system,model_skybox_movement,base.group_system,1,1,0,1

@@ -8,11 +8,34 @@
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
                 <app data-string="Skybox" string="Skybox" name="skybox">
+                    <block title="Dates et heures" name="skybox_time">
+                        <setting string="Fuseau horaire"
+                                 help="Heure de travail de tout le monde : les dates s'affichent a cette heure quel que soit le fuseau de l'ordinateur. Les dates envoyees a Skybox partent avec ce decalage.">
+                            <field name="skybox_timezone" class="o_light_label"/>
+                        </setting>
+                    </block>
                     <block title="Pickers" name="skybox_pickers">
                         <setting string="Redistribution des ordres"
                                  help="Delai avant de redistribuer aux autres pickers les ordres d'un picker deconnecte ou inactif. 0 = immediat.">
                             <field name="skybox_picker_reassign_delay" class="o_light_label" style="width: 6rem;"/>
                             <span class="ms-1">minutes</span>
+                        </setting>
+                    </block>
+                    <block title="Mouvements d'entrepot" name="skybox_movements">
+                        <setting string="Zones des etapes de preparation"
+                                 help="Codes de zone envoyes a Skybox pour le picking, l'emballage, le quai, la sortie et l'isolement des colis abimes.">
+                            <div class="row mt-2">
+                                <label for="skybox_zone_picking" class="col-5 o_light_label"/>
+                                <field name="skybox_zone_picking" class="col-7"/>
+                                <label for="skybox_zone_packing" class="col-5 o_light_label"/>
+                                <field name="skybox_zone_packing" class="col-7"/>
+                                <label for="skybox_zone_staging" class="col-5 o_light_label"/>
+                                <field name="skybox_zone_staging" class="col-7"/>
+                                <label for="skybox_zone_dispatch" class="col-5 o_light_label"/>
+                                <field name="skybox_zone_dispatch" class="col-7"/>
+                                <label for="skybox_zone_exception" class="col-5 o_light_label"/>
+                                <field name="skybox_zone_exception" class="col-7"/>
+                            </div>
                         </setting>
                     </block>
                 </app>

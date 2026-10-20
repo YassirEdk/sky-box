@@ -253,13 +253,6 @@
               action="action_skybox_receipts"
               sequence="10"/>
 
-    <!-- Sous-menu Stock -->
-    <menuitem id="menu_skybox_stock"
-              name="Stock"
-              parent="menu_skybox_tracking"
-              action="action_skybox_stock"
-              sequence="20"/>
-
     <!-- Action Bags list (colis standard, renomme) -->
     <record id="action_skybox_bags" model="ir.actions.act_window">
         <field name="name">Bags list</field>

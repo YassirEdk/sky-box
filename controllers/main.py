@@ -292,59 +292,106 @@ class SkyboxLoginController(http.Controller):
             'date': fields.Datetime.to_string(history.date),
         }
 
-    @http.route('/skybox/api/bag', type='json', auth='public',
+    @http.route('/skybox/api/bags', type='json', auth='public',
                 methods=['POST'], csrf=False)
-    def api_bag(self, **kwargs):
-        """Scan d'un bag (app mobile) : renvoie les colis qui sont dedans.
+    def api_bags(self, **kwargs):
+        """Bags a ranger (app mobile) : bags dont des colis ont ete traites
+        par Skybox (Processed) et ne sont pas encore stockes, avec leurs colis.
+        L'app l'appelle a l'ouverture de l'ecran et toutes les X secondes ;
+        chaque colis se range ensuite avec POST /skybox/api/store.
 
         En-tete: Authorization: Bearer <access_token>
-        Corps JSON attendu: {"bag": "BAG001"}  (ou {"bag_id": 1})
-        Colis = prealertes affectees au bag (par Skybox) + receptions encore
-        dans le bag (statut Receipt).
+        Corps JSON (optionnel): {"bag": "BAG001"} ou {"bag_id": 1}
         """
         user, error = self._agent(kwargs)
         if error:
             return error
         env = self._agent_env(user)
-        bag, error = self._find_bag(env, kwargs)
-        if error:
-            return error
-        colis = bag._skybox_bag_contents()
+        bag = None
+        if kwargs.get('bag') or kwargs.get('bag_id'):
+            try:
+                bag, error = self._find_bag(env, kwargs)
+            except ValueError:
+                error = {'success': False, 'error': 'bag_not_found'}
+            if error:
+                return error
+        bags = env['stock.quant.package']._skybox_bags_to_store(bag)
         return {
             'success': True,
-            'bag': bag.name,
-            'bag_id': bag.id,
-            'skybox_status': bag.skybox_bag_status or None,
-            'count': len(colis),
-            'colis': colis,
+            'count': len(bags),
+            'parcels': sum(b['count'] for b in bags),
+            'bags': bags,
         }
 
     @http.route('/skybox/api/store', type='json', auth='public',
                 methods=['POST'], csrf=False)
     def api_store(self, **kwargs):
-        """Stocke les commandes d'un bag dans un emplacement (app mobile).
+        """Range les colis d'un bag dans leurs emplacements (app mobile).
 
-        En-tete: Authorization: Bearer <access_token>
+        L'app recupere les bags a ranger via POST /skybox/api/bags, puis
+        renvoie ici chaque colis avec son emplacement.
+        En-tete: Authorization: Bearer <access_token>  (-> agent de l'action)
         Corps JSON attendu:
-            {"tracking_number": "...", "bag": "BAG001",
-             "location": "WH/Stock/Zone A1"}
-        La commande (encore dans le bag, statut Receipt ou Processed par
-        Skybox) passe en Stored dans l'emplacement ; enregistree dans
-        l'historique. Seule cette route fait passer un colis en Stored.
+            {"bag": "BAG001",
+             "parcels": [{"tracking_number": "...", "location": "Zone A1"},
+                         {"tracking_number": "...", "location_id": 18}]}
+        (un seul colis : {"bag", "tracking_number", "location"} accepte)
+        "location" = code-barres, nom complet ou nom de l'emplacement.
+        Le colis (encore dans le bag, statut Receipt ou Processed par Skybox)
+        passe en Stored ; enregistre dans l'historique avec l'agent.
+        Seule cette route fait passer un colis en Stored.
         """
         user, error = self._agent(kwargs)
         if error:
             return error
 
-        tracking_number = (kwargs.get('tracking_number') or '').strip()
-        if not tracking_number:
-            return {'success': False, 'error': 'missing_tracking_number'}
-
         env = self._agent_env(user)
         bag, error = self._find_bag(env, kwargs)
         if error:
             return error
-        location, error = self._find_location(env, kwargs)
+
+        parcels = kwargs.get('parcels')
+        if parcels is None and kwargs.get('tracking_number'):
+            parcels = [kwargs]
+        if not isinstance(parcels, list) or not parcels:
+            return {'success': False, 'error': 'missing_parcels'}
+
+        results = []
+        for item in parcels:
+            item = item if isinstance(item, dict) else {}
+            result = self._store_parcel(env, bag, item)
+            result['tracking_number'] = (
+                result.get('tracking_number')
+                or (item.get('tracking_number') or '').strip() or None)
+            results.append(result)
+
+        # Recalcul de l'emplacement des colis traites (suivi dans le chatter)
+        # au nom de l'agent, pas de l'utilisateur public de la requete.
+        env.flush_all()
+        stored = [r for r in results if r['success']]
+        return {
+            'success': len(stored) == len(results),
+            'bag': bag.name,
+            'bag_id': bag.id,
+            'agent': user.name,
+            'agent_id': user.id,
+            'date': fields.Datetime.to_string(fields.Datetime.now()),
+            'count': len(results),
+            'stored': len(stored),
+            'failed': len(results) - len(stored),
+            'parcels': results,
+        }
+
+    def _store_parcel(self, env, bag, item):
+        """Range un colis du bag ; retourne son resultat (dict)."""
+        tracking_number = (item.get('tracking_number') or '').strip()
+        if not tracking_number:
+            return {'success': False, 'error': 'missing_tracking_number'}
+        try:
+            location, error = self._find_location(env, item)
+        except ValueError:
+            location, error = None, {'success': False,
+                                     'error': 'location_not_found'}
         if error:
             return error
 
@@ -361,23 +408,135 @@ class SkyboxLoginController(http.Controller):
             'location_dest_id': location.id,
             'skybox_status': 'stored',
         })
-        pickings._log_history(
-            'stored', location=location, bag=bag,
-            note="Stocke via l'app mobile")
+        note = "Stocke via l'app mobile"
+        pickings._log_history('stored', location=location, bag=bag, note=note)
+        pickings._skybox_store_movement(location, bag=bag, note=note)
         return {
             'success': True,
-            'bag': bag.name,
-            'bag_id': bag.id,
+            'tracking_number': pickings[0].tracking_number,
             'location': location.complete_name,
             'location_id': location.id,
-            'agent': user.name,
-            'agent_id': user.id,
-            'date': fields.Datetime.to_string(fields.Datetime.now()),
-            'count': len(pickings),
             'orders': [{
                 'picking_id': p.id,
                 'reference': p.name,
-                'tracking_number': p.tracking_number,
                 'client': p.client_id.name or None,
             } for p in pickings],
+        }
+
+    @http.route('/skybox/api/transfer', type='json', auth='public',
+                methods=['POST'], csrf=False)
+    def api_transfer(self, **kwargs):
+        """Deplace des colis stockes d'un emplacement vers un autre (app
+        mobile), comme le bouton Transferer de la reception.
+
+        En-tete: Authorization: Bearer <access_token>  (-> agent de l'action)
+        Corps JSON attendu:
+            {"parcels": [
+                {"tracking_number": "...", "location": "Zone B1",
+                 "from_location": "Zone A2"},
+                {"tracking_number": "...", "location_id": 19}]}
+        (un seul colis : {"tracking_number", "location"} accepte)
+        "location" / "location_id" = nouvel emplacement ;
+        "from_location" / "from_location_id" (optionnel) = emplacement scanne
+        par l'agent, verifie contre l'emplacement actuel du colis.
+        Seuls les colis Stored se transferent ; mouvement LOCATION_TRANSFER
+        envoye a Skybox et ligne d'historique avec l'agent.
+        """
+        user, error = self._agent(kwargs)
+        if error:
+            return error
+
+        parcels = kwargs.get('parcels')
+        if parcels is None and kwargs.get('tracking_number'):
+            parcels = [kwargs]
+        if not isinstance(parcels, list) or not parcels:
+            return {'success': False, 'error': 'missing_parcels'}
+
+        env = self._agent_env(user)
+        results = []
+        for item in parcels:
+            item = item if isinstance(item, dict) else {}
+            result = self._transfer_parcel(env, item)
+            result['tracking_number'] = (
+                result.get('tracking_number')
+                or (item.get('tracking_number') or '').strip() or None)
+            results.append(result)
+
+        # Recalcul de l'emplacement des colis traites (suivi dans le chatter :
+        # ancien -> nouvel emplacement) au nom de l'agent.
+        env.flush_all()
+        done = [r for r in results if r['success']]
+        return {
+            'success': len(done) == len(results),
+            'agent': user.name,
+            'agent_id': user.id,
+            'date': fields.Datetime.to_string(fields.Datetime.now()),
+            'count': len(results),
+            'transferred': len(done),
+            'failed': len(results) - len(done),
+            'parcels': results,
+        }
+
+    def _transfer_parcel(self, env, item):
+        """Transfere un colis stocke ; retourne son resultat (dict)."""
+        tracking_number = (item.get('tracking_number') or '').strip()
+        if not tracking_number:
+            return {'success': False, 'error': 'missing_tracking_number'}
+        try:
+            location, error = self._find_location(env, item)
+        except ValueError:
+            location, error = None, {'success': False,
+                                     'error': 'location_not_found'}
+        if error:
+            return error
+
+        picking = env['stock.picking'].search([
+            ('picking_type_code', '=', 'incoming'),
+            ('tracking_number', '=ilike', tracking_number),
+            ('state', '!=', 'cancel'),
+        ], order='id desc', limit=1)
+        if not picking:
+            return {'success': False, 'error': 'parcel_not_found'}
+        if picking.skybox_status != 'stored':
+            return {'success': False, 'error': 'parcel_not_stored',
+                    'status': picking.skybox_status or None}
+
+        old_location = picking.location_dest_id
+        if item.get('from_location') or item.get('from_location_id'):
+            try:
+                from_location, error = self._find_location(env, {
+                    'location': item.get('from_location'),
+                    'location_id': item.get('from_location_id'),
+                })
+            except ValueError:
+                from_location, error = None, {'success': False,
+                                              'error': 'location_not_found'}
+            if error:
+                return dict(error, error='from_location_not_found')
+            if from_location != old_location:
+                return {'success': False, 'error': 'wrong_from_location',
+                        'current_location': old_location.complete_name or None,
+                        'current_location_id': old_location.id or None}
+        if location == old_location:
+            return {'success': False, 'error': 'same_location',
+                    'current_location': old_location.complete_name}
+
+        picking.location_dest_id = location
+        picking._skybox_movement(
+            'LOCATION_TRANSFER', location._skybox_position(),
+            old_location._skybox_position() if old_location else None)
+        picking._log_history(
+            'moved', location=location,
+            note="De %s vers %s (app mobile)" % (
+                old_location.display_name or '/', location.display_name))
+        return {
+            'success': True,
+            'tracking_number': picking.tracking_number,
+            'from_location': old_location.complete_name or None,
+            'from_location_id': old_location.id or None,
+            'location': location.complete_name,
+            'location_id': location.id,
+            'picking_id': picking.id,
+            'reference': picking.name,
+            'client': picking.client_id.name or None,
         }

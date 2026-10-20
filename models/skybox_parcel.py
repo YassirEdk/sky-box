@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo import api, fields, models
+from odoo.exceptions import UserError
 
 from .skybox_event import parse_skybox_datetime, to_float, to_int
 
@@ -17,15 +18,134 @@ class SkyboxParcel(models.Model):
     revision = fields.Integer(string="Revision", readonly=True, tracking=True)
     last_event_id = fields.Char(string="Dernier eventId", readonly=True)
     last_event_type = fields.Char(string="Dernier evenement", readonly=True)
+    storage_location_id = fields.Many2one(
+        comodel_name='stock.location', string="Emplacement de stockage",
+        compute='_compute_storage_location', inverse='_inverse_storage_location',
+        store=True, readonly=False, tracking=True,
+        domain=[('usage', '=', 'internal')],
+        help="Bin ou le colis est stocke. Le choisir ici stocke la reception "
+             "(statut Stored), comme le scan 'Store' de l'app mobile.")
+    last_event_at = fields.Datetime(
+        string="Derniere mise a jour", readonly=True,
+        help="Date et heure de la derniere mise a jour envoyee par Skybox.")
     event_ids = fields.One2many(
         comodel_name='skybox.event', inverse_name='parcel_id',
         string="Evenements",
     )
+    history_count = fields.Integer(
+        string="Historique", compute='_compute_history_count')
+
+    def _compute_history_count(self):
+        for parcel in self:
+            parcel.history_count = len(parcel._history_rows())
+
+    def _history_order(self):
+        """Dernier ordre de preparation (hors commande groupee) du colis."""
+        self.ensure_one()
+        return self.env['skybox.preparation.order.line'].sudo().search([
+            ('order_id.is_group', '=', False),
+            ('tracking_number', '=ilike', self.tracking_number),
+        ], order='id desc', limit=1).order_id
+
+    def _history_rows(self):
+        """Lignes de l'historique du colis (meme format que celui des ordres
+        de preparation) : dans un ordre, son historique complet ; sinon
+        prealerte, reception / stockage / transferts et traitement Skybox."""
+        self.ensure_one()
+        order = self._history_order()
+        if order:
+            return order._history_rows(self.tracking_number)
+        rows = []
+
+        def add(date, step, detail='', user='', kind='reception'):
+            if date:
+                rows.append({'date': date, 'tracking_number': self.tracking_number,
+                             'step': step, 'detail': detail or '',
+                             'user': user or '', 'kind': kind})
+
+        tn = self.tracking_number or ''
+        prealertes = self.prealerte_id | self.env['skybox.prealerte'].sudo().search(
+            [('tracking_number', '=ilike', tn)])
+        for pre in prealertes:
+            add(pre.create_date, "Prealerte", "Prealerte %s creee" % pre.name,
+                pre.create_uid.name, 'prealerte')
+        pickings = self.picking_id | self.env['stock.picking'].sudo().search([
+            ('picking_type_code', '=', 'incoming'),
+            ('tracking_number', '=ilike', tn),
+        ])
+        History = self.env['skybox.picking.history'].sudo()
+        actions = dict(History._fields['action'].selection)
+        for h in History.search([('picking_id', 'in', pickings.ids)]):
+            # Lignes automatiques des evenements Skybox (deja "Colis traite").
+            if (h.note or '').startswith('Skybox '):
+                continue
+            add(h.date, "Reception - %s" % actions.get(h.action, h.action),
+                " / ".join(filter(None, [
+                    h.picking_id.name,
+                    h.location_id.complete_name
+                    and "Emplacement : %s" % h.location_id.complete_name,
+                    h.bag_id.name and "Bag : %s" % h.bag_id.name,
+                    h.note])),
+                h.user_id.name)
+        add(self.processed_at, "Colis traite",
+            " / ".join(filter(None, [self.package_condition, self.result])),
+            self.processed_by, 'parcel')
+        add(self.skybill_date, "Skybill",
+            "Skybill %s" % (self.skybill_number or ''), '', 'parcel')
+        add(self.decided_at, "Decision",
+            " / ".join(filter(None, [self.decision_kind, self.decision_note])),
+            self.decided_by, 'parcel')
+        return sorted(rows, key=lambda r: r['date'])
+
+    def action_history(self):
+        """Bouton Historique : pop-up chronologique du colis."""
+        self.ensure_one()
+        wizard = self.env['skybox.colis.history'].create({
+            'parcel_id': self.id,
+            'order_id': self._history_order().id,
+            'tracking_number': self.tracking_number,
+        })
+        return {
+            'type': 'ir.actions.act_window',
+            'name': "Historique du colis %s" % self.tracking_number,
+            'res_model': 'skybox.colis.history',
+            'res_id': wizard.id,
+            'view_mode': 'form',
+            'target': 'new',
+        }
 
     skybox_past = fields.Boolean(
         string="Termine (Past orders)", index=True, copy=False, readonly=True,
         help="Expedie : l'ordre de preparation est termine, visible "
              "uniquement dans Past orders.")
+    in_preparation = fields.Boolean(
+        string="Dans un ordre de preparation", compute='_compute_in_preparation',
+        search='_search_in_preparation',
+        help="Colis dans un ordre de preparation en cours (Nouveau a Pret a "
+             "expedier) : il est suivi dans Preparation orders, plus dans "
+             "Colis traites.")
+
+    def _preparation_parcel_ids(self):
+        """Colis dans un ordre de preparation en cours."""
+        lines = self.env['skybox.preparation.order.line'].sudo().search([
+            ('order_id.is_group', '=', False),
+            ('order_id.state', 'in', ('new', 'picking', 'picked', 'packed', 'ready')),
+        ])
+        tns = {(t or '').upper() for t in lines.mapped('tracking_number') if t}
+        ids = set(lines.parcel_id.ids)
+        if tns:
+            ids |= set(self.sudo().search([('tracking_number', 'in', list(tns))]).ids)
+        return ids
+
+    def _compute_in_preparation(self):
+        ids = self._preparation_parcel_ids()
+        for parcel in self:
+            parcel.in_preparation = parcel.id in ids
+
+    def _search_in_preparation(self, operator, value):
+        ids = list(self._preparation_parcel_ids())
+        positive = (operator == '=') == bool(value)
+        return [('id', 'in' if positive else 'not in', ids)]
 
     warehouse_code = fields.Char(string="Code entrepot")
     warehouse_id = fields.Many2one(
@@ -113,6 +233,125 @@ class SkyboxParcel(models.Model):
         comodel_name='stock.picking', string="Reception Odoo",
         ondelete='set null')
 
+    @api.depends('picking_id.location_dest_id', 'picking_id.skybox_status')
+    def _compute_storage_location(self):
+        for parcel in self:
+            picking = parcel.picking_id
+            parcel.storage_location_id = (
+                picking.location_dest_id if picking.skybox_status == 'stored' else False)
+
+    def _inverse_storage_location(self):
+        """Stocke la reception du colis dans l'emplacement choisi."""
+        for parcel in self.filtered('storage_location_id'):
+            picking = parcel.picking_id or self.env['stock.picking'].search([
+                ('picking_type_code', '=', 'incoming'),
+                ('tracking_number', '=ilike', parcel.tracking_number),
+                ('state', '!=', 'cancel'),
+            ], limit=1)
+            if not picking:
+                raise UserError(
+                    "Le colis %s n'a pas de reception Odoo : recevez-le d'abord "
+                    "(app mobile) avant de le stocker." % parcel.tracking_number)
+            if picking.skybox_status == 'canceled':
+                raise UserError("La reception %s est annulee." % picking.name)
+            location = parcel.storage_location_id
+            if picking.skybox_status == 'stored' and picking.location_dest_id == location:
+                continue
+            bag = picking.bag
+            was_stored = picking.skybox_status == 'stored'
+            old_location = picking.location_dest_id
+            picking.write({
+                'location_dest_id': location.id,
+                'skybox_status': 'stored',
+            })
+            picking._log_history(
+                'stored', location=location, bag=bag,
+                note="Stocke depuis Colis traites")
+            picking._skybox_store_movement(
+                location, bag=bag, was_stored=was_stored,
+                old_location=old_location, note="Stocke depuis Colis traites")
+            if parcel.picking_id != picking:
+                parcel.picking_id = picking
+
+    def write(self, vals):
+        # Sac change a la main dans Odoo (pas par un evenement Skybox, qui
+        # envoie aussi destination_bag_code) : mouvement BAG_TRANSFER.
+        manual_bag = 'destination_bag_id' in vals and 'destination_bag_code' not in vals
+        old_bags = {p.id: p.destination_bag_id for p in self} if manual_bag else {}
+        res = super().write(vals)
+        if manual_bag:
+            for parcel in self:
+                old, new = old_bags.get(parcel.id), parcel.destination_bag_id
+                if new and old != new:
+                    self.env['skybox.movement']._record(
+                        'BAG_TRANSFER', parcel.tracking_number,
+                        {'bagCode': new.name},
+                        {'bagCode': old.name} if old else None,
+                        warehouse_code=parcel.warehouse_code,
+                        picking_id=parcel.picking_id.id,
+                        partner_reference=parcel.picking_id.name)
+        if vals.get('destination_bag_id'):
+            # Bag de destination saisi (Skybox ou a la main) : le colis quitte
+            # son bag source.
+            self._move_to_destination_bag()
+        return res
+
+    def _move_to_destination_bag(self):
+        """Met la reception du colis dans son bag de destination (tant qu'elle
+        n'est pas stockee / annulee) : le colis disparait du bag source dans
+        la liste des bags."""
+        Picking = self.env['stock.picking']
+        for parcel in self.filtered('destination_bag_id'):
+            picking = parcel.picking_id or Picking.search([
+                ('picking_type_code', '=', 'incoming'),
+                ('tracking_number', '=ilike', parcel.tracking_number),
+                ('state', '!=', 'cancel'),
+            ], limit=1)
+            bag = parcel.destination_bag_id
+            if (not picking or picking.bag == bag
+                    or picking.skybox_status not in ('receipt', 'processed')):
+                continue
+            source = picking.bag
+            picking.bag = bag
+            picking._log_history(
+                'moved', bag=bag,
+                note="Bag %s -> bag de destination %s" % (source.name or '-', bag.name))
+
+    @api.model
+    def _init_restore_stored(self):
+        """Mise a jour du module : receptions rangees (derniere action
+        'stored' / 'moved' vers un emplacement) remises a tort en Processed
+        par une mise a jour Skybox : on les remet en Stored."""
+        History = self.env['skybox.picking.history']
+        pickings = self.env['stock.picking'].search([
+            ('picking_type_code', '=', 'incoming'),
+            ('skybox_status', '=', 'processed'),
+        ])
+        for picking in pickings:
+            last = History.search([
+                ('picking_id', '=', picking.id),
+                ('action', 'in', ('stored', 'received')),
+            ], order='date desc, id desc', limit=1)
+            if last.action == 'stored':
+                picking.skybox_status = 'stored'
+
+    @api.model
+    def _init_destination_bags(self):
+        """Mise a jour du module : colis deja affectes a un bag de destination
+        mais encore comptes dans leur bag source."""
+        self.search([('destination_bag_id', '!=', False)])._move_to_destination_bag()
+
+    @api.model
+    def _init_last_event_at(self):
+        """Mise a jour du module : remplit la date de derniere mise a jour des
+        colis existants avec leur dernier evenement Skybox traite."""
+        for parcel in self.search([('last_event_at', '=', False)]):
+            event = self.env['skybox.event'].search([
+                ('parcel_id', '=', parcel.id), ('state', '=', 'accepted'),
+            ], order='received_at desc, id desc', limit=1)
+            if event.received_at:
+                parcel.last_event_at = event.received_at
+
     _sql_constraints = [
         ('tracking_number_uniq', 'unique(tracking_number)',
          "Ce numero de tracking existe deja."),
@@ -159,6 +398,7 @@ class SkyboxParcel(models.Model):
             'revision': to_int(parcel_data.get('revision')),
             'last_event_id': event.event_id,
             'last_event_type': event.event_type,
+            'last_event_at': fields.Datetime.now(),
             'warehouse_code': data.get('warehouseCode') or False,
             'warehouse_id': self._warehouse(data.get('warehouseCode')).id,
             'result': parcel_data.get('result') or False,
@@ -288,8 +528,8 @@ class SkyboxParcel(models.Model):
         """Complete la reception Odoo (app mobile) du meme tracking avec les
         infos saisies au traitement Skybox (client, suite, transporteur,
         articles), meme si aucune prealerte n'a ete matchee.
-        Colis traite par Skybox (result PROCESSED) : la reception passe
-        directement en Processed (quel que soit son statut, sauf annulee).
+        Colis traite par Skybox (result PROCESSED) : la reception Receipt
+        passe en Processed (jamais une reception deja Stored ou annulee).
         Tant qu'il n'est pas stocke, le colis suit le bag envoye par Skybox."""
         for parcel in self:
             picking = parcel.picking_id or self.env['stock.picking'].search([
@@ -318,8 +558,10 @@ class SkyboxParcel(models.Model):
                      and picking.bag != bag)
             if moved:
                 vals['bag'] = bag.id
+            # Jamais revenir en arriere : un colis deja range (Stored) reste
+            # Stored meme si Skybox renvoie une mise a jour du colis.
             processed = (parcel.result == 'PROCESSED'
-                         and picking.skybox_status not in ('processed', 'canceled'))
+                         and picking.skybox_status in ('receipt',))
             if processed:
                 vals['skybox_status'] = 'processed'
             if vals:

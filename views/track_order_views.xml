@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Track order : recherche dans tout le systeme (ordres, colis traites,
+         receptions, prealertes) ; chaque colis / ordre une seule fois, a son
+         etape actuelle. Clic sur une ligne = ouvre la fiche. -->
+    <record id="view_skybox_track_list" model="ir.ui.view">
+        <field name="name">skybox.track.list</field>
+        <field name="model">skybox.track</field>
+        <field name="arch" type="xml">
+            <list string="Track order" create="0" edit="0" delete="0"
+                  action="action_open" type="object"
+                  decoration-bf="kind == 'order'">
+                <field name="kind" widget="badge"
+                       decoration-muted="kind == 'prealerte'"
+                       decoration-info="kind == 'reception'"
+                       decoration-success="kind == 'parcel'"
+                       decoration-warning="kind == 'order'"/>
+                <field name="progress" widget="progressbar" optional="show"/>
+                <field name="name"/>
+                <field name="tracking_numbers"/>
+                <field name="partner_id"/>
+                <field name="suite_number"/>
+                <field name="skybill"/>
+                <field name="parcel_count" optional="show"/>
+                <field name="location" optional="show"/>
+                <field name="date"/>
+                <field name="state" column_invisible="1"/>
+                <field name="status" widget="badge"
+                       decoration-info="state in ('new', 'reception')"
+                       decoration-warning="state in ('picking', 'picked', 'packed', 'ready')"
+                       decoration-success="state == 'parcel'"
+                       decoration-muted="state == 'prealerte'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_track_search" model="ir.ui.view">
+        <field name="name">skybox.track.search</field>
+        <field name="model">skybox.track</field>
+        <field name="arch" type="xml">
+            <search string="Track order">
+                <field name="search_text" string="Ordre / client / suite / skybill / tracking"/>
+                <field name="name" string="Reference"/>
+                <field name="partner_id" string="Client"/>
+                <field name="suite_number" string="Suite"/>
+                <field name="skybill" string="Skybill"/>
+                <field name="tracking_numbers" string="Tracking"/>
+                <filter name="orders" string="En preparation"
+                        domain="[('kind', '=', 'order')]"/>
+                <filter name="parcels" string="Traites"
+                        domain="[('kind', '=', 'parcel')]"/>
+                <filter name="receptions" string="Recus"
+                        domain="[('kind', '=', 'reception')]"/>
+                <filter name="prealertes" string="Prealertes"
+                        domain="[('kind', '=', 'prealerte')]"/>
+                <separator/>
+                <filter name="state_new" string="Nouveau" domain="[('state', '=', 'new')]"/>
+                <filter name="state_picking" string="Picking" domain="[('state', '=', 'picking')]"/>
+                <filter name="state_picked" string="Picked" domain="[('state', '=', 'picked')]"/>
+                <filter name="state_packed" string="Packed" domain="[('state', '=', 'packed')]"/>
+                <filter name="state_ready" string="Pret a expedier" domain="[('state', '=', 'ready')]"/>
+                <separator/>
+                <filter name="cancel_requested" string="Annulation demandee"
+                        domain="[('status', 'ilike', 'annulation demandee')]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_kind" string="Phase" context="{'group_by': 'kind'}"/>
+                    <filter name="group_client" string="Client" context="{'group_by': 'partner_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_skybox_track_order" model="ir.actions.act_window">
+        <field name="name">Track order</field>
+        <field name="res_model">skybox.track</field>
+        <field name="view_mode">list</field>
+        <field name="view_ids" eval="[(5, 0, 0)]"/>
+        <field name="view_id" ref="view_skybox_track_list"/>
+        <field name="search_view_id" ref="view_skybox_track_search"/>
+        <field name="context">{'create': False}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucun resultat
+            </p>
+            <p>
+                Tapez un numero d'ordre (commande groupee ou ordre), un nom de client,
+                une suite, un skybill ou un numero de tracking : la recherche se fait
+                dans les ordres de preparation, les colis traites, les receptions et
+                les prealertes.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_skybox_track_order"
+              name="Track order"
+              parent="menu_skybox_root"
+              action="action_skybox_track_order"
+              sequence="18"/>
+
+</odoo>

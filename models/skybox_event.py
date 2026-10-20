@@ -7,15 +7,19 @@ Contrat : "Integration Skybox <-> Odoo - Guide technique complet" (contrat v2).
 Regles d'ACK (section 4 du guide) :
   - traite                         -> 200 ACCEPTED
   - eventId deja traite            -> 200 DUPLICATE
-  - revision <= revision stockee   -> 200 DUPLICATE
+  - revision <= revision stockee   -> 200 ACCEPTED (mise a jour forcee)
   - refus metier definitif         -> 200 REJECTED + reasonCode (jamais renvoye)
+  - annulation a decider           -> 200 PENDING (reponse plus tard sur /cancellation)
   - enveloppe invalide             -> 400 REJECTED + reasonCode (jamais renvoye)
   - secret absent / faux           -> 401 (renvoye par Skybox)
   - erreur passagere Odoo          -> 500, jamais REJECTED (renvoye par Skybox)
 """
 import json
 import logging
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
+
+import pytz
 
 from odoo import api, fields, models
 
@@ -44,12 +48,16 @@ REASON_CODES = {
     'UNSUPPORTED_MEDIA_TYPE': "Content-Type different de application/json",
     'UNKNOWN_WAREHOUSE': "Entrepot inconnu d'Odoo",
     'UNKNOWN_PARCEL': "Colis inconnu d'Odoo",
-    'ALREADY_PICKED': "Picking deja commence, annulation impossible",
+    'ALREADY_DISPATCHED': "Ordre deja expedie, annulation impossible",
+    'PARCEL_ALREADY_IN_ORDER': "Colis deja dans un ordre de preparation en cours",
     'INTERNAL_ERROR': "Erreur interne Odoo (renvoyer plus tard)",
 }
 
 MAX_REFERENCE = 150
 MAX_MESSAGE = 500
+
+# Decalage horaire en fin de date ISO : +08:00, -0500, +01.
+_TZ_OFFSET = re.compile(r'([+-])(\d{2}):?(\d{2})?$')
 
 
 class SkyboxEventRejected(Exception):
@@ -62,22 +70,52 @@ class SkyboxEventRejected(Exception):
 
 
 def parse_skybox_datetime(value):
-    """'2026-10-08T10:28:28.259973500Z' -> datetime naive UTC (ou False)."""
+    """Date ISO-8601 -> datetime naive UTC (ou False).
+
+    '2026-10-08T10:28:28.259973500Z' et '2026-10-16T17:00:00+08:00' sont
+    convertis en UTC (le decalage est respecte). Sans fuseau, la date est lue
+    en UTC (contrat v2)."""
     if not value or not isinstance(value, str):
         return False
     value = value.strip()
-    if value.endswith('Z'):
+    offset = timedelta(0)
+    if value[-1:] in ('Z', 'z'):
         value = value[:-1]
-    value = value.split('+')[0]
+    else:
+        match = _TZ_OFFSET.search(value)
+        if match and 'T' in value[:match.start()]:
+            sign = -1 if match.group(1) == '-' else 1
+            offset = sign * timedelta(hours=int(match.group(2)),
+                                      minutes=int(match.group(3) or 0))
+            value = value[:match.start()]
     if '.' in value:
         main, frac = value.split('.', 1)
         value = "%s.%s" % (main, frac[:6])
-    for fmt in ('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d'):
+    for fmt in ('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S',
+                '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M', '%Y-%m-%d'):
         try:
-            return datetime.strptime(value, fmt)
+            return datetime.strptime(value, fmt) - offset
         except ValueError:
             continue
     return False
+
+
+TIMEZONE_PARAM = 'skybox.timezone'
+DEFAULT_TIMEZONE = 'Africa/Casablanca'
+
+
+def format_skybox_datetime(env, value=None):
+    """datetime naive UTC (defaut : maintenant) -> date ISO-8601 envoyee a
+    Skybox, a l'heure du fuseau choisi dans Parametres > Skybox, avec son
+    decalage (ex. 2026-10-20T11:00:00+01:00). Meme instant que la date UTC."""
+    value = value or fields.Datetime.now()
+    name = env['ir.config_parameter'].sudo().get_param(TIMEZONE_PARAM) or DEFAULT_TIMEZONE
+    try:
+        tz = pytz.timezone(name)
+    except pytz.UnknownTimeZoneError:
+        tz = pytz.utc
+    local = pytz.utc.localize(value.replace(microsecond=0)).astimezone(tz)
+    return local.isoformat()
 
 
 def to_float(value):
@@ -104,7 +142,13 @@ class SkyboxEvent(models.Model):
     event_type = fields.Char(string="Type d'evenement", index=True, readonly=True)
     contract_version = fields.Integer(string="Version du contrat", readonly=True)
     partner_code = fields.Char(string="Partner code", readonly=True)
-    occurred_at = fields.Datetime(string="Produit le", readonly=True)
+    occurred_at = fields.Datetime(
+        string="Produit le", readonly=True,
+        help="occurredAt : moment du fait metier chez Skybox (identique a "
+             "chaque renvoi).")
+    enqueued_at = fields.Datetime(
+        string="Mis en file le", readonly=True,
+        help="enqueuedAt : moment ou Skybox a mis le message en file d'envoi.")
     sent_at = fields.Datetime(string="Envoye le", readonly=True)
     attempt = fields.Integer(string="Tentative", readonly=True)
     tracking_number = fields.Char(string="Numero de tracking", index=True, readonly=True)
@@ -128,7 +172,7 @@ class SkyboxEvent(models.Model):
     )
     ack_status = fields.Char(
         string="ACK renvoye", readonly=True,
-        help="ACCEPTED, DUPLICATE, PARTIAL, REJECTED ou ERROR (HTTP 500).")
+        help="ACCEPTED, DUPLICATE, PARTIAL, PENDING, REJECTED ou ERROR (HTTP 500).")
     reason_code = fields.Char(string="reasonCode", readonly=True)
     ack_parcels = fields.Text(
         string="Detail par colis (PARTIAL)", readonly=True)
@@ -177,6 +221,7 @@ class SkyboxEvent(models.Model):
             'contract_version': to_int(envelope.get('contractVersion')),
             'partner_code': envelope.get('partnerCode') or False,
             'occurred_at': parse_skybox_datetime(envelope.get('occurredAt')),
+            'enqueued_at': parse_skybox_datetime(envelope.get('enqueuedAt')),
             'sent_at': parse_skybox_datetime(envelope.get('sentAt')),
             'attempt': to_int(envelope.get('attempt')),
             'tracking_number': (parcel.get('trackingNumber')
@@ -247,6 +292,10 @@ class SkyboxEvent(models.Model):
             })
             _logger.info("Skybox event %s (%s) : doublon (attempt %s)",
                          vals['event_id'], vals['event_type'], vals['attempt'])
+            if existing.event_type in ORDER_EVENTS:
+                # Ordres : un renvoi du meme message garde la reponse du
+                # premier envoi (ACCEPTED, DUPLICATE, PENDING...).
+                return 200, existing._ack()
             return 200, existing._ack(status='DUPLICATE')
 
         # Renvoi d'un evenement en erreur (ou rejete) : on le retraite.
@@ -276,6 +325,9 @@ class SkyboxEvent(models.Model):
         ack = {'status': status, 'partnerReference': reference}
         if self.event_type in ORDER_EVENTS:
             ack['partnerOrderRef'] = reference
+        if self.event_type == 'PREPARATION_ORDER_CANCELLED' and status in (
+                'ACCEPTED', 'REJECTED'):
+            ack['cancelled'] = status == 'ACCEPTED'
         if self.reason_code and status in ('REJECTED', 'ERROR'):
             ack['reasonCode'] = self.reason_code
         if self.message and status != 'DUPLICATE':
@@ -338,8 +390,10 @@ class SkyboxEvent(models.Model):
         return 200, self._ack()
 
     def action_reprocess(self):
-        """Retraite manuellement un evenement rejete / en erreur."""
-        for event in self.filtered(lambda e: e.state in ('rejected', 'error', 'received')):
+        """Retraite manuellement un evenement rejete / en erreur, ou ignore
+        (DUPLICATE : revision deja recue)."""
+        for event in self.filtered(lambda e: e.state in ('rejected', 'error', 'received')
+                                   or e.ack_status == 'DUPLICATE'):
             try:
                 envelope = json.loads(event.payload or '{}')
             except ValueError:
@@ -391,14 +445,17 @@ class SkyboxEvent(models.Model):
         revision = to_int(parcel_data.get('revision'))
         Parcel = self.env['skybox.parcel']
         parcel = Parcel.search([('tracking_number', '=ilike', tracking)], limit=1)
-        if parcel and revision <= parcel.revision:
-            return parcel, False, (
-                "Revision %s <= revision enregistree %s : rien applique."
-                % (revision, parcel.revision))
+        # Toujours appliquer, meme une revision deja recue ou plus ancienne :
+        # le dernier evenement recu fait foi (mise a jour forcee).
+        previous = parcel.revision if parcel else None
         data = {'warehouseCode': warehouse_code}
         if bag_progress:
             data['bagProgress'] = bag_progress
         parcel = Parcel._apply_event(parcel, data, parcel_data, self)
+        if previous is not None and revision <= previous:
+            return parcel, True, (
+                "Revision %s appliquee (revision enregistree %s : mise a jour forcee)."
+                % (revision, previous))
         return parcel, True, "Revision %s appliquee." % revision
 
     def _handle_parcel(self, data):
@@ -561,9 +618,11 @@ class SkyboxEvent(models.Model):
         if not order_id:
             raise SkyboxEventRejected('MISSING_FIELD', "data.orderId manquant.")
         Order = self.env['skybox.preparation.order']
+        # orderId complet (suffixe compris) : un identifiant deja connu au
+        # premier envoi -> DUPLICATE ; Skybox relance alors l'ordre sous un
+        # nouveau numero (contrat du 16/10/2026, section 2.2).
         order = Order.search([('name', '=', order_id)], limit=1)
         if order:
-            # Un seul PREPARATION_ORDER par ordre : deja connu -> DUPLICATE.
             self.preparation_order_id = order
             return {'reference': order.reference, 'status': 'DUPLICATE',
                     'note': "Ordre %s deja recu." % order_id}
@@ -577,6 +636,22 @@ class SkyboxEvent(models.Model):
         if unknown:
             raise SkyboxEventRejected(
                 'UNKNOWN_PARCEL', "Colis inconnu(s) d'Odoo: %s" % ", ".join(unknown))
+        # Un colis ne peut etre que dans un seul ordre en cours.
+        busy = []
+        Line = self.env['skybox.preparation.order.line']
+        for p in parcels:
+            tracking = (p.get('trackingNumber') or '').strip()
+            line = Line.search([
+                ('tracking_number', '=ilike', tracking),
+                ('order_id.is_group', '=', False),
+                ('order_id.state', 'in', ('new', 'picking', 'picked', 'packed', 'ready')),
+            ], limit=1) if tracking else Line
+            if line:
+                busy.append("%s (%s)" % (tracking, line.order_id.name))
+        if busy:
+            raise SkyboxEventRejected(
+                'PARCEL_ALREADY_IN_ORDER',
+                "Colis deja dans un ordre de preparation en cours: %s" % ", ".join(busy))
 
         order = Order._apply_event(data, self)
         self.preparation_order_id = order
@@ -584,17 +659,14 @@ class SkyboxEvent(models.Model):
                 'note': "Ordre %s (%s colis)." % (order_id, len(order.line_ids))}
 
     def _handle_preparation_order_cancelled(self, data):
+        """Demande d'annulation (ou d'arret) d'un ordre : ACCEPTED (annule
+        tout de suite), PENDING (decision de l'entrepot, envoyee plus tard sur
+        /cancellation) ou REJECTED (annulation impossible)."""
         order_id = (data.get('orderId') or '').strip()
         if not order_id:
             raise SkyboxEventRejected('MISSING_FIELD', "data.orderId manquant.")
-        Order = self.env['skybox.preparation.order']
-        order = Order.search([('name', '=', order_id)], limit=1)
-        if order and order.state not in ('new', 'cancelled'):
-            self.preparation_order_id = order
-            raise SkyboxEventRejected(
-                'ALREADY_PICKED', "Preparation deja commencee (%s)." % dict(
-                    order._fields['state'].selection).get(order.state))
-        order = Order._apply_cancel(data, self)
+        order, status, note = self.env['skybox.preparation.order']._receive_cancel(
+            data, self)
         self.preparation_order_id = order
-        return {'reference': order.reference,
-                'note': "Ordre %s annule." % order_id}
+        return {'reference': order.reference or order.name, 'status': status,
+                'note': note}

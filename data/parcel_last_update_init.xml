@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Remplit la date de derniere mise a jour des colis existants -->
+    <function model="skybox.parcel" name="_init_last_event_at"/>
+    <!-- Ordres refuses par Skybox : annules -->
+    <function model="skybox.preparation.order" name="_init_cancel_refused"/>
+    <!-- Consolidations pas encore commencees : un ordre par colis -->
+    <function model="skybox.preparation.order" name="_init_split_consolidations"/>
+    <!-- Receptions rangees remises a tort en Processed : retour en Stored -->
+    <function model="skybox.parcel" name="_init_restore_stored"/>
+    <!-- Colis deja dans un bag de destination : retires de leur bag source -->
+    <function model="skybox.parcel" name="_init_destination_bags"/>
+</odoo>
