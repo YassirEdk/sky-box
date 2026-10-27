@@ -40,7 +40,7 @@ class ResUsers(models.Model):
     def action_skybox_login_log(self):
         self.ensure_one()
         action = self.env['ir.actions.act_window']._for_xml_id(
-            'skybox.action_skybox_login_log')
+            'skybox_custom.action_skybox_login_log')
         action['domain'] = [('user_id', '=', self.id)]
         action['context'] = {'default_user_id': self.id}
         return action
@@ -57,8 +57,8 @@ class ResUsers(models.Model):
 
     @api.depends('groups_id')
     def _compute_skybox_picker(self):
-        picker = self.env.ref('skybox.group_skybox_picker', raise_if_not_found=False)
-        agent = self.env.ref('skybox.group_skybox_agent', raise_if_not_found=False)
+        picker = self.env.ref('skybox_custom.group_skybox_picker', raise_if_not_found=False)
+        agent = self.env.ref('skybox_custom.group_skybox_agent', raise_if_not_found=False)
         Order = self.env['skybox.preparation.order'].sudo()
         connected = {t.user_id.id for t in Order._picker_cycle()}
         reassign_at = Order._picker_reassign_at(self._origin)
@@ -75,7 +75,7 @@ class ResUsers(models.Model):
     def action_skybox_open_orders(self):
         self.ensure_one()
         action = self.env['ir.actions.act_window']._for_xml_id(
-            'skybox.action_skybox_preparation_order')
+            'skybox_custom.action_skybox_preparation_order')
         action['domain'] = [('agent_id', '=', self.id)]
         action['context'] = {'search_default_open': 1}
         return action

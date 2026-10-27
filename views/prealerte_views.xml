@@ -214,11 +214,6 @@
     </record>
 
     <!-- Menus -->
-    <menuitem id="menu_skybox_root"
-              name="Skybox"
-              web_icon="skybox,static/description/icon.png"
-              sequence="10"/>
-
     <menuitem id="menu_skybox_prealerte"
               name="Gestion des prealertes"
               parent="menu_skybox_root"

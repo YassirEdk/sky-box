@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_skybox_root"
+              name="Skybox"
+              web_icon="skybox_custom,static/description/icon.png"
+              sequence="10"/>
+</odoo>

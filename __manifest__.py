@@ -20,6 +20,7 @@ entrepots disponibles dans le module Inventory.
         'data/demo_locations_bags.xml',
         'data/location_barcode_init.xml',
         'data/prealerte_reception_date_init.xml',
+        'views/menus.xml',
         'views/login_log_views.xml',
         'views/res_users_views.xml',
         'views/hr_employee_views.xml',
@@ -44,10 +45,10 @@ entrepots disponibles dans le module Inventory.
     ],
     'assets': {
         'web.assets_backend': [
-            'skybox/static/src/css/skybox.css',
-            'skybox/static/src/js/server_timezone.js',
-            'skybox/static/src/js/password_eye_field.js',
-            'skybox/static/src/xml/password_eye_field.xml',
+            'skybox_custom/static/src/css/skybox.css',
+            'skybox_custom/static/src/js/server_timezone.js',
+            'skybox_custom/static/src/js/password_eye_field.js',
+            'skybox_custom/static/src/xml/password_eye_field.xml',
         ],
     },
     'installable': True,

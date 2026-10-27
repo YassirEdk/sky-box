@@ -10,10 +10,10 @@ class SkyboxLoginController(http.Controller):
         """Retourne le role Skybox de l'utilisateur : admin, manager, agent, picker."""
         env = request.env
         for xmlid, role in (
-            ('skybox.group_skybox_admin', 'admin'),
-            ('skybox.group_skybox_manager', 'manager'),
-            ('skybox.group_skybox_agent', 'agent'),
-            ('skybox.group_skybox_picker', 'picker'),
+            ('skybox_custom.group_skybox_admin', 'admin'),
+            ('skybox_custom.group_skybox_manager', 'manager'),
+            ('skybox_custom.group_skybox_agent', 'agent'),
+            ('skybox_custom.group_skybox_picker', 'picker'),
         ):
             grp = env.ref(xmlid, raise_if_not_found=False)
             if grp and user in grp.sudo().users:

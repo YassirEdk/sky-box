@@ -256,8 +256,8 @@ class SkyboxPreparationOrder(models.Model):
         Un picker deconnecte (jeton revoque/expire) ou inactif depuis
         PICKER_IDLE_MINUTES sort du cycle ; un nouveau connecte entre a la fin.
         Seuls les Pickers comptent (pas les Agents/Managers/Admins)."""
-        picker = self.env.ref('skybox.group_skybox_picker', raise_if_not_found=False)
-        agent = self.env.ref('skybox.group_skybox_agent', raise_if_not_found=False)
+        picker = self.env.ref('skybox_custom.group_skybox_picker', raise_if_not_found=False)
+        agent = self.env.ref('skybox_custom.group_skybox_agent', raise_if_not_found=False)
         if not picker:
             return []
         now = fields.Datetime.now()
@@ -503,7 +503,7 @@ class SkyboxPreparationOrder(models.Model):
         if len(tns) <= 1:
             return self._history_popup(tns[0] if tns else False)
         action = self.env['ir.actions.act_window']._for_xml_id(
-            'skybox.action_skybox_past_order')
+            'skybox_custom.action_skybox_past_order')
         action['domain'] = [('order_id', '=', self.id)]
         action['name'] = "Colis de %s" % self.name
         return action

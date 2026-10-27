@@ -61,9 +61,6 @@ fi
 echo ">> [3/3] Application de la config Inventaire sur '${DB}'..."
 "${ODOO_BIN}" shell -c "${CONF}" -d "${DB}" --no-http < "${SCRIPT}"
 
-# Ancien tunnel Cloudflare (retire) : on l'arrete s'il tourne encore.
-pkill -f "cloudflared tunnel" >/dev/null 2>&1 || true
-
 IP="$(hostname -I | awk '{print $1}')"
 echo ""
 echo "==================================================================="
@@ -71,5 +68,5 @@ echo ">> TOUT EST BON."
 echo ">> Odoo sur le reseau local : http://${IP}:8069"
 echo ">> Endpoint login           : http://${IP}:8069/skybox/api/login"
 echo ">> IMPORTANT : redemarrez Odoo pour appliquer la configuration :"
-echo "     ${ODOO_BIN} -c ${CONF} -d ${DB} -u skybox"
+echo "     ${ODOO_BIN} -c ${CONF} -d ${DB} -u skybox_custom"
 echo "==================================================================="
