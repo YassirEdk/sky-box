@@ -78,6 +78,88 @@ class SkyboxEventController(http.Controller):
             envelope, headers, api_key=api_key)
         return request.make_json_response(ack, status=status)
 
+    # ------------------------------------------------------------------
+    # Backoffice Skybox : traitement d'un bag (scan / fermeture)
+    # ------------------------------------------------------------------
+    def _backoffice_bag(self, route):
+        """Authentifie (cle "My API") et lit {"bagCode": ...}.
+        Retourne (bag, corps, None) ou (None, None, reponse d'erreur)."""
+        httpreq = request.httprequest
+        if 'application/json' not in (httpreq.content_type or '').lower():
+            return None, None, self._ack(400, 'REJECTED', 'UNSUPPORTED_MEDIA_TYPE',
+                                         "Content-Type must be application/json")
+        api_key = request.env['skybox.api.key'].sudo()._match_incoming_request(
+            httpreq.headers, httpreq.args)
+        if not api_key:
+            _logger.warning("Skybox %s : authentification refusee (ip %s) - %s",
+                            route, httpreq.remote_addr, self._auth_hint(httpreq))
+            return None, None, self._ack(401, 'UNAUTHORIZED',
+                                         message="Authentication failed")
+        try:
+            body = json.loads(httpreq.get_data(as_text=True) or 'null')
+        except ValueError:
+            return None, None, self._ack(400, 'REJECTED', 'INVALID_JSON',
+                                         "Invalid JSON body")
+        if not isinstance(body, dict):
+            return None, None, self._ack(400, 'REJECTED', 'INVALID_JSON',
+                                         "Body must be a JSON object")
+        code = str(body.get('bagCode') or '').strip()
+        if not code:
+            return None, None, self._ack(400, 'REJECTED', 'MISSING_FIELD',
+                                         "bagCode manquant.")
+        bag = request.env['stock.quant.package'].sudo().search(
+            [('name', '=ilike', code)], limit=1)
+        if not bag:
+            return None, None, self._ack(200, 'REJECTED', 'UNKNOWN_BAG',
+                                         "Bag inconnu d'Odoo: %s" % code)
+        if bag.skybox_open_state == 'open':
+            return None, None, self._ack(
+                200, 'REJECTED', 'BAG_STILL_OPEN',
+                "Bag %s encore ouvert dans Odoo (ouvert par %s) : "
+                "le fermer avant le traitement." % (
+                    bag.name, bag.skybox_opened_by.name or '-'))
+        return bag, body, None
+
+    @http.route('/skybox/bag/scan', type='http', auth='public',
+                methods=['POST'], csrf=False, save_session=False)
+    def skybox_bag_scan(self, **kwargs):
+        """Backoffice : scan d'un bag a traiter. Ouvre le bag pour le
+        traitement et renvoie ses colis.
+
+        Corps JSON : {"bagCode": "BAG001", "operator": "...", "sessionId": "..."}
+        Bag ouvert en reception (app mobile) -> REJECTED BAG_STILL_OPEN.
+        Bag deja ouvert pour le traitement -> ACCEPTED, alreadyOpen: true.
+        """
+        bag, body, error = self._backoffice_bag('bag/scan')
+        if error:
+            return error
+        already = bag.skybox_open_state == 'processing'
+        if not already:
+            bag._skybox_open_processing(body.get('operator'), body.get('sessionId'))
+        _logger.info("Skybox bag/scan %s : ouvert pour traitement (deja: %s)",
+                     bag.name, already)
+        return request.make_json_response(dict(
+            bag._skybox_backoffice_dict(), status='ACCEPTED', alreadyOpen=already))
+
+    @http.route('/skybox/bag/close', type='http', auth='public',
+                methods=['POST'], csrf=False, save_session=False)
+    def skybox_bag_close(self, **kwargs):
+        """Backoffice : fin du traitement d'un bag, le referme.
+
+        Corps JSON : {"bagCode": "BAG001", "operator": "..."}
+        Bag ouvert en reception (app mobile) -> REJECTED BAG_STILL_OPEN.
+        Bag deja ferme -> ACCEPTED, alreadyClosed: true.
+        """
+        bag, body, error = self._backoffice_bag('bag/close')
+        if error:
+            return error
+        already = bag.skybox_open_state == 'closed'
+        if not already:
+            bag._skybox_close_processing(body.get('operator'))
+        _logger.info("Skybox bag/close %s : ferme (deja: %s)", bag.name, already)
+        return request.make_json_response(dict(
+            bag._skybox_backoffice_dict(), status='ACCEPTED', alreadyClosed=already))
+
     @http.route('/skybox/ping', type='http', auth='public',
                 methods=['GET', 'POST'], csrf=False, save_session=False)
     def skybox_ping(self, **kwargs):

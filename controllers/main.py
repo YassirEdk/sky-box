@@ -248,6 +248,9 @@ class SkyboxLoginController(http.Controller):
         bag, error = self._find_bag(env, kwargs)
         if error:
             return error
+        if bag.skybox_open_state != 'open':
+            return {'success': False, 'error': 'bag_closed',
+                    'bag': bag.name, 'bag_id': bag.id, 'state': 'closed'}
 
         # Doublon : tracking deja recu (non annule).
         existing = Picking.search([
@@ -322,6 +325,109 @@ class SkyboxLoginController(http.Controller):
             'parcels': sum(b['count'] for b in bags),
             'bags': bags,
         }
+
+    @http.route('/skybox/api/bag_list', type='json', auth='public',
+                methods=['POST'], csrf=False)
+    def api_bag_list(self, **kwargs):
+        """Verifie si un bag scanne existe dans Odoo (app mobile, ecran
+        Reception) avant d'y recevoir des colis.
+
+        En-tete: Authorization: Bearer <access_token>
+        Corps JSON attendu: {"bag": "BAG001"}
+        Renvoie "exists": true si le bag existe, false sinon, et son etat
+        ("state": "open" / "closed").
+        """
+        user, error = self._agent(kwargs)
+        if error:
+            return error
+        bag_name = (kwargs.get('bag') or '').strip()
+        if not bag_name:
+            return {'success': False, 'error': 'missing_bag'}
+        env = self._agent_env(user)
+        bag = env['stock.quant.package'].search(
+            [('name', '=ilike', bag_name)], limit=1)
+        if not bag:
+            return {'success': True, 'exists': False,
+                    'bag': bag_name, 'bag_id': None, 'state': None}
+        return dict(bag._skybox_state_dict(), success=True, exists=True)
+
+    @http.route('/skybox/api/bag/open', type='json', auth='public',
+                methods=['POST'], csrf=False)
+    def api_bag_open(self, **kwargs):
+        """Ouvre un bag scanne (app mobile, debut de reception).
+
+        En-tete: Authorization: Bearer <access_token>
+        Corps JSON attendu: {"bag": "BAG001"} ou {"bag_id": 1}
+        Le bag doit etre ferme ; deja ouvert par le meme agent : accepte
+        (reprise apres coupure), par un autre agent : "bag_already_open".
+        Bag ferme par un autre agent : "bag_closed_by_other" (seul l'agent
+        qui l'a ferme le rouvre ; bag neuf ou referme par le backoffice
+        apres traitement : tout agent).
+        Un agent n'a qu'un bag ouvert a la fois : "agent_has_open_bag"
+        (+ "open_bag") tant qu'il n'a pas ferme l'autre.
+        """
+        user, error = self._agent(kwargs)
+        if error:
+            return error
+        env = self._agent_env(user)
+        try:
+            bag, error = self._find_bag(env, kwargs)
+        except ValueError:
+            error = {'success': False, 'error': 'bag_not_found'}
+        if error:
+            return error
+        if bag.skybox_open_state == 'processing':
+            return dict(bag._skybox_state_dict(), success=False,
+                        error='bag_in_processing')
+        if bag.skybox_open_state == 'open':
+            if bag.skybox_opened_by != user:
+                return dict(bag._skybox_state_dict(), success=False,
+                            error='bag_already_open')
+            return dict(bag._skybox_state_dict(), success=True,
+                        already_open=True)
+        # Bag ferme par un agent en reception : seul cet agent le rouvre
+        # (le backoffice Skybox l'ouvre pour le traitement via /skybox/bag/scan).
+        if bag.skybox_closed_by and bag.skybox_closed_by != user:
+            return dict(bag._skybox_state_dict(), success=False,
+                        error='bag_closed_by_other')
+        # Un agent n'a qu'un bag ouvert a la fois : fermer l'autre d'abord.
+        other = bag._skybox_other_open_bag(user)
+        if other:
+            return dict(bag._skybox_state_dict(), success=False,
+                        error='agent_has_open_bag',
+                        open_bag=other.name, open_bag_id=other.id,
+                        open_bag_opened_at=fields.Datetime.to_string(
+                            other.skybox_opened_at) or None)
+        bag._skybox_open()
+        return dict(bag._skybox_state_dict(), success=True, already_open=False)
+
+    @http.route('/skybox/api/bag/close', type='json', auth='public',
+                methods=['POST'], csrf=False)
+    def api_bag_close(self, **kwargs):
+        """Ferme un bag (app mobile, fin de reception). Seul un bag ferme
+        peut etre traite par Skybox.
+
+        En-tete: Authorization: Bearer <access_token>
+        Corps JSON attendu: {"bag": "BAG001"} ou {"bag_id": 1}
+        """
+        user, error = self._agent(kwargs)
+        if error:
+            return error
+        env = self._agent_env(user)
+        try:
+            bag, error = self._find_bag(env, kwargs)
+        except ValueError:
+            error = {'success': False, 'error': 'bag_not_found'}
+        if error:
+            return error
+        if bag.skybox_open_state == 'closed':
+            return dict(bag._skybox_state_dict(), success=True,
+                        already_closed=True)
+        if bag.skybox_open_state == 'processing':
+            return dict(bag._skybox_state_dict(), success=False,
+                        error='bag_in_processing')
+        bag._skybox_close()
+        return dict(bag._skybox_state_dict(), success=True, already_closed=False)
 
     @http.route('/skybox/api/store', type='json', auth='public',
                 methods=['POST'], csrf=False)
@@ -477,18 +583,53 @@ class SkyboxLoginController(http.Controller):
             'parcels': results,
         }
 
-    def _transfer_parcel(self, env, item):
-        """Transfere un colis stocke ; retourne son resultat (dict)."""
-        tracking_number = (item.get('tracking_number') or '').strip()
-        if not tracking_number:
-            return {'success': False, 'error': 'missing_tracking_number'}
-        try:
-            location, error = self._find_location(env, item)
-        except ValueError:
-            location, error = None, {'success': False,
-                                     'error': 'location_not_found'}
+    @http.route('/skybox/api/transfer/check', type='json', auth='public',
+                methods=['POST'], csrf=False)
+    def api_transfer_check(self, **kwargs):
+        """Verifie, au scan d'un colis, qu'il est bien dans l'emplacement
+        source scanne par l'agent (app mobile, avant /skybox/api/transfer).
+        Aucune ecriture.
+
+        En-tete: Authorization: Bearer <access_token>
+        Corps JSON attendu:
+            {"tracking_number": "...", "from_location": "Zone A2"}
+        ("from_location_id" accepte a la place de "from_location")
+        Erreurs : missing_tracking_number, missing_from_location,
+        from_location_not_found, parcel_not_found, parcel_not_stored,
+        wrong_from_location (avec l'emplacement actuel du colis).
+        """
+        user, error = self._agent(kwargs)
         if error:
             return error
+        if not (kwargs.get('from_location') or kwargs.get('from_location_id')):
+            return {'success': False, 'error': 'missing_from_location'}
+
+        env = self._agent_env(user)
+        picking, location, error = self._check_parcel_location(env, kwargs)
+        if error:
+            error['tracking_number'] = (
+                picking.tracking_number if picking
+                else (kwargs.get('tracking_number') or '').strip() or None)
+            return error
+        return {
+            'success': True,
+            'tracking_number': picking.tracking_number,
+            'location': location.complete_name or None,
+            'location_id': location.id or None,
+            'picking_id': picking.id,
+            'reference': picking.name,
+            'client': picking.client_id.name or None,
+        }
+
+    def _check_parcel_location(self, env, item):
+        """Colis stocke par "tracking_number", verifie contre l'emplacement
+        scanne "from_location" / "from_location_id" (si fourni).
+        Retourne (reception, emplacement actuel, None) ou
+        (reception ou None, emplacement ou None, erreur)."""
+        tracking_number = (item.get('tracking_number') or '').strip()
+        if not tracking_number:
+            return None, None, {'success': False,
+                                'error': 'missing_tracking_number'}
 
         picking = env['stock.picking'].search([
             ('picking_type_code', '=', 'incoming'),
@@ -496,12 +637,13 @@ class SkyboxLoginController(http.Controller):
             ('state', '!=', 'cancel'),
         ], order='id desc', limit=1)
         if not picking:
-            return {'success': False, 'error': 'parcel_not_found'}
-        if picking.skybox_status != 'stored':
-            return {'success': False, 'error': 'parcel_not_stored',
-                    'status': picking.skybox_status or None}
-
+            return None, None, {'success': False, 'error': 'parcel_not_found'}
         old_location = picking.location_dest_id
+        if picking.skybox_status != 'stored':
+            return picking, old_location, {
+                'success': False, 'error': 'parcel_not_stored',
+                'status': picking.skybox_status or None}
+
         if item.get('from_location') or item.get('from_location_id'):
             try:
                 from_location, error = self._find_location(env, {
@@ -512,11 +654,32 @@ class SkyboxLoginController(http.Controller):
                 from_location, error = None, {'success': False,
                                               'error': 'location_not_found'}
             if error:
-                return dict(error, error='from_location_not_found')
+                return picking, old_location, dict(
+                    error, error='from_location_not_found')
             if from_location != old_location:
-                return {'success': False, 'error': 'wrong_from_location',
-                        'current_location': old_location.complete_name or None,
-                        'current_location_id': old_location.id or None}
+                return picking, old_location, {
+                    'success': False, 'error': 'wrong_from_location',
+                    'scanned_location': from_location.complete_name,
+                    'scanned_location_id': from_location.id,
+                    'current_location': old_location.complete_name or None,
+                    'current_location_id': old_location.id or None}
+        return picking, old_location, None
+
+    def _transfer_parcel(self, env, item):
+        """Transfere un colis stocke ; retourne son resultat (dict)."""
+        if not (item.get('tracking_number') or '').strip():
+            return {'success': False, 'error': 'missing_tracking_number'}
+        try:
+            location, error = self._find_location(env, item)
+        except ValueError:
+            location, error = None, {'success': False,
+                                     'error': 'location_not_found'}
+        if error:
+            return error
+
+        picking, old_location, error = self._check_parcel_location(env, item)
+        if error:
+            return error
         if location == old_location:
             return {'success': False, 'error': 'same_location',
                     'current_location': old_location.complete_name}

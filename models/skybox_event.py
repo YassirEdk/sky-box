@@ -50,6 +50,7 @@ REASON_CODES = {
     'UNKNOWN_PARCEL': "Colis inconnu d'Odoo",
     'ALREADY_DISPATCHED': "Ordre deja expedie, annulation impossible",
     'PARCEL_ALREADY_IN_ORDER': "Colis deja dans un ordre de preparation en cours",
+    'BAG_STILL_OPEN': "Bag encore ouvert dans Odoo (reception en cours)",
     'INTERNAL_ERROR': "Erreur interne Odoo (renvoyer plus tard)",
 }
 
@@ -435,6 +436,23 @@ class SkyboxEvent(models.Model):
                 ('state', '!=', 'cancel'),
             ]))
 
+    def _check_bag_closed(self, code):
+        """Bag source encore ouvert en reception (app mobile)
+        -> REJECTED BAG_STILL_OPEN. Un bag ferme ou ouvert pour le
+        traitement (scan backoffice) est accepte.
+        Apres fermeture, l'evenement se retraite (Retraiter) ou se renvoie."""
+        code = (code or '').strip()
+        if not code:
+            return
+        bag = self.env['stock.quant.package'].search(
+            [('name', '=ilike', code)], limit=1)
+        if bag and bag.skybox_open_state == 'open':
+            raise SkyboxEventRejected(
+                'BAG_STILL_OPEN',
+                "Bag %s encore ouvert dans Odoo (ouvert par %s) : "
+                "le fermer avant le traitement." % (
+                    bag.name, bag.skybox_opened_by.name or '-'))
+
     # ------------------------------------------------------------------
     # Handlers metier : retournent {'reference', 'note', 'status', 'parcels'}
     # ------------------------------------------------------------------
@@ -468,6 +486,11 @@ class SkyboxEvent(models.Model):
             raise SkyboxEventRejected(
                 'MISSING_FIELD', "data.parcel.trackingNumber manquant.")
         self._check_warehouse(data.get('warehouseCode'))
+        if self.event_type == 'PARCEL_PROCESSED':
+            reception = parcel_data.get('reception') or {}
+            progress = data.get('bagProgress') or {}
+            self._check_bag_closed(reception.get('sourceBagCode')
+                                   or progress.get('sourceBagCode'))
 
         parcel, applied, note = self._apply_parcel_record(
             data.get('warehouseCode'), parcel_data, data.get('bagProgress'))
@@ -490,6 +513,7 @@ class SkyboxEvent(models.Model):
                 'MISSING_FIELD', "data.bag.sourceBagCode manquant.")
         self._check_warehouse(data.get('warehouseCode'))
         code = bag_data['sourceBagCode']
+        self._check_bag_closed(code)
         bag = self.env['stock.quant.package']._skybox_find_or_create(code)
         counts = data.get('counts') or {}
         detail = data.get('detailLevel') or 'SUMMARY'
@@ -516,6 +540,13 @@ class SkyboxEvent(models.Model):
                 data.get('parcels') or [], indent=2, ensure_ascii=False),
             'skybox_last_event_id': self.event_id,
         })
+        if bag.skybox_open_state == 'processing':
+            # Sac termine : referme si le backoffice ne l'a pas encore fait.
+            bag.write({
+                'skybox_open_state': 'closed',
+                'skybox_closed_at': fields.Datetime.now(),
+                'skybox_closed_by': False,
+            })
         self.bag_id = bag
 
         # Colis du sac : FULL = etat complet a appliquer, SUMMARY = resume.
