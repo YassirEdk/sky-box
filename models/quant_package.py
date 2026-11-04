@@ -158,6 +158,16 @@ class StockQuantPackage(models.Model):
             'count': self.skybox_order_count,
         }
 
+    def _skybox_parcels(self):
+        """Colis deja recus dans le bag (app mobile : reprise d'un bag
+        ouvert, meme format que /skybox/api/bags)."""
+        self.ensure_one()
+        prealertes = {(pre.tracking_number or '').lower(): pre
+                      for pre in self.skybox_prealerte_ids}
+        return [self._skybox_colis_dict(
+            prealertes.get((p.tracking_number or '').lower(), False), p)
+            for p in self.skybox_order_ids.sorted('id')]
+
     def _skybox_other_open_bag(self, user):
         """Autre bag deja ouvert en reception par cet agent (un seul a la fois)."""
         return self.search([

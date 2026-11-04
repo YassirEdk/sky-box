@@ -34,6 +34,9 @@
                 <header>
                     <button name="action_resend" string="Renvoyer" type="object"
                             class="btn-primary" invisible="state != 'refused'"/>
+                    <button name="action_resend_duplicate" string="Renvoyer (nouvel ID)"
+                            type="object" class="btn-primary"
+                            invisible="state != 'sent' or not duplicate"/>
                     <field name="state" widget="statusbar" statusbar_visible="pending,sent"/>
                 </header>
                 <sheet>
@@ -74,10 +77,27 @@
                             <field name="message"/>
                         </group>
                     </group>
-                    <group string="JSON">
-                        <field name="from_json"/>
-                        <field name="to_json"/>
-                    </group>
+                    <notebook>
+                        <page string="Requete / Reponse" name="log">
+                            <group>
+                                <field name="response_code"/>
+                            </group>
+                            <group string="Requete envoyee a Skybox">
+                                <field name="request_json" nolabel="1" colspan="2"
+                                       widget="code" options="{'mode': 'javascript'}"/>
+                            </group>
+                            <group string="Reponse de Skybox">
+                                <field name="response_json" nolabel="1" colspan="2"
+                                       widget="code" options="{'mode': 'javascript'}"/>
+                            </group>
+                        </page>
+                        <page string="Positions (JSON)" name="json">
+                            <group>
+                                <field name="from_json"/>
+                                <field name="to_json"/>
+                            </group>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>

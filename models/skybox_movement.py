@@ -54,6 +54,10 @@ def _clean_position(position):
             if k in POSITION_KEYS and v}
 
 
+def _dump(data):
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
 class SkyboxMovement(models.Model):
     _name = 'skybox.movement'
     _description = "Mouvement d'entrepot (Odoo -> Skybox)"
@@ -98,6 +102,10 @@ class SkyboxMovement(models.Model):
     message = fields.Char(string="Reponse Skybox")
     attempts = fields.Integer(string="Tentatives")
     sent_at = fields.Datetime(string="Envoye le")
+    # Journal du dernier envoi (affiche sur la fiche du mouvement).
+    request_json = fields.Text(string="Requete envoyee", readonly=True)
+    response_code = fields.Integer(string="Code HTTP", readonly=True)
+    response_json = fields.Text(string="Reponse Skybox (brute)", readonly=True)
 
     @api.depends('from_json', 'to_json')
     def _compute_display(self):
@@ -151,10 +159,19 @@ class SkyboxMovement(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         records = super().create(vals_list)
-        for rec in records:
-            # Identifiant Odoo definitif : cle d'idempotence chez Skybox.
-            rec.movement_ref = "ODOO-MV-%06d" % rec.id
+        records._set_movement_ref()
         return records
+
+    def _set_movement_ref(self):
+        """Identifiant Odoo definitif : cle d'idempotence chez Skybox.
+        Prefixe par la base (database.uuid) : une autre base Odoo (test,
+        restauration) qui envoie au meme Skybox reutilise les memes id ;
+        sans prefixe Skybox les prend pour des doublons et les ignore."""
+        uuid = self.env['ir.config_parameter'].sudo().get_param('database.uuid') or ''
+        db = uuid.replace('-', '')[:8].upper()
+        for rec in self:
+            rec.movement_ref = ("ODOO-%s-MV-%06d" % (db, rec.id) if db
+                                else "ODOO-MV-%06d" % rec.id)
 
     # ------------------------------------------------------------------
     # Envoi
@@ -223,15 +240,19 @@ class SkyboxMovement(models.Model):
         auth_headers, params = key._build_request()
         headers = {'Content-Type': 'application/json'}
         headers.update(auth_headers)
-        for rec in pending:
+        payloads = [m._payload() for m in pending]
+        url = base + BATCH_PATH
+        for rec, payload in zip(pending, payloads):
             rec.attempts += 1
+            rec.request_json = "POST %s\n%s" % (url, _dump(payload))
         try:
             response = requests.post(
-                base + BATCH_PATH, json={'movements': [m._payload() for m in pending]},
+                url, json={'movements': payloads},
                 headers=headers, params=params, timeout=30)
         except Exception as exc:  # noqa: BLE001
             _logger.warning("Skybox mouvements : %s", exc)
-            pending.write({'message': "Skybox injoignable, nouvel essai automatique: %s" % exc})
+            pending.write({'message': "Skybox injoignable, nouvel essai automatique: %s" % exc,
+                           'response_code': 0, 'response_json': str(exc)})
             return
         try:
             body = response.json()
@@ -243,13 +264,16 @@ class SkyboxMovement(models.Model):
             msg = (body.get('message') or '') if isinstance(body, dict) else ''
             # 401 / 5xx / reseau : passager, on garde 'A envoyer'.
             pending.write({'message': "HTTP %s %s %s, nouvel essai automatique."
-                                      % (code, err or '', msg or response.reason)})
+                                      % (code, err or '', msg or response.reason),
+                           'response_code': code,
+                           'response_json': _dump(body) if body else response.text})
             return
         by_ref = {m.movement_ref: m for m in pending}
         for result in body.get('results') or []:
             rec = by_ref.get(result.get('movementId'))
             if not rec:
                 continue
+            rec.write({'response_code': code, 'response_json': _dump(result)})
             rec._apply_result(result, now)
 
     def _apply_result(self, result, now):
@@ -282,6 +306,16 @@ class SkyboxMovement(models.Model):
         """Renvoie un mouvement refuse (meme movementId) apres correction."""
         self.filtered(lambda m: m.state == 'refused').write(
             {'state': 'pending', 'error_code': False})
+        self._send_pending()
+        return True
+
+    def action_resend_duplicate(self):
+        """Renvoie un mouvement que Skybox a ignore comme doublon (movementId
+        deja utilise par une autre base) avec un nouveau movementId."""
+        dups = self.filtered(lambda m: m.state == 'sent' and m.duplicate)
+        dups.write({'state': 'pending', 'duplicate': False,
+                    'error_code': False, 'message': False})
+        dups._set_movement_ref()
         self._send_pending()
         return True
 

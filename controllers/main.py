@@ -334,8 +334,8 @@ class SkyboxLoginController(http.Controller):
 
         En-tete: Authorization: Bearer <access_token>
         Corps JSON attendu: {"bag": "BAG001"}
-        Renvoie "exists": true si le bag existe, false sinon, et son etat
-        ("state": "open" / "closed").
+        Renvoie "exists": true si le bag existe, false sinon, son etat
+        ("state": "open" / "closed") et ses colis deja recus ("parcels").
         """
         user, error = self._agent(kwargs)
         if error:
@@ -348,8 +348,10 @@ class SkyboxLoginController(http.Controller):
             [('name', '=ilike', bag_name)], limit=1)
         if not bag:
             return {'success': True, 'exists': False,
-                    'bag': bag_name, 'bag_id': None, 'state': None}
-        return dict(bag._skybox_state_dict(), success=True, exists=True)
+                    'bag': bag_name, 'bag_id': None, 'state': None,
+                    'parcels': []}
+        return dict(bag._skybox_state_dict(), success=True, exists=True,
+                    parcels=bag._skybox_parcels())
 
     @http.route('/skybox/api/bag/open', type='json', auth='public',
                 methods=['POST'], csrf=False)
@@ -365,6 +367,7 @@ class SkyboxLoginController(http.Controller):
         apres traitement : tout agent).
         Un agent n'a qu'un bag ouvert a la fois : "agent_has_open_bag"
         (+ "open_bag") tant qu'il n'a pas ferme l'autre.
+        Succes : "parcels" = colis deja recus dans le bag (format /bags).
         """
         user, error = self._agent(kwargs)
         if error:
@@ -384,7 +387,7 @@ class SkyboxLoginController(http.Controller):
                 return dict(bag._skybox_state_dict(), success=False,
                             error='bag_already_open')
             return dict(bag._skybox_state_dict(), success=True,
-                        already_open=True)
+                        already_open=True, parcels=bag._skybox_parcels())
         # Bag ferme par un agent en reception : seul cet agent le rouvre
         # (le backoffice Skybox l'ouvre pour le traitement via /skybox/bag/scan).
         if bag.skybox_closed_by and bag.skybox_closed_by != user:
@@ -399,7 +402,8 @@ class SkyboxLoginController(http.Controller):
                         open_bag_opened_at=fields.Datetime.to_string(
                             other.skybox_opened_at) or None)
         bag._skybox_open()
-        return dict(bag._skybox_state_dict(), success=True, already_open=False)
+        return dict(bag._skybox_state_dict(), success=True, already_open=False,
+                    parcels=bag._skybox_parcels())
 
     @http.route('/skybox/api/bag/close', type='json', auth='public',
                 methods=['POST'], csrf=False)
