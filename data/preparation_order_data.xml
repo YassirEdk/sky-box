@@ -8,7 +8,26 @@
             <field name="prefix">PREP/</field>
             <field name="padding">5</field>
         </record>
+
+        <!-- Nom des batches (vagues de picking) -->
+        <record id="seq_skybox_preparation_batch" model="ir.sequence">
+            <field name="name">Batch de preparation Skybox</field>
+            <field name="code">skybox.preparation.batch</field>
+            <field name="prefix">BATCH/</field>
+            <field name="padding">5</field>
+        </record>
     </data>
+
+    <!-- Creation automatique des batches (vagues de picking) -->
+    <record id="cron_skybox_autobatch" model="ir.cron">
+        <field name="name">Skybox: creer les batches de preparation</field>
+        <field name="model_id" ref="model_skybox_preparation_order"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_autobatch()</field>
+        <field name="interval_number">2</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
 
     <!-- Renvoi automatique des etapes non acceptees par Skybox -->
     <record id="cron_skybox_resend_preparation_status" model="ir.cron">

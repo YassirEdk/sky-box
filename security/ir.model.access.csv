@@ -2,6 +2,7 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_skybox_prealerte,skybox.prealerte,model_skybox_prealerte,base.group_user,1,1,1,1
 access_skybox_prealerte_line,skybox.prealerte.line,model_skybox_prealerte_line,base.group_user,1,1,1,1
 access_skybox_courier,skybox.courier,model_skybox_courier,base.group_user,1,1,1,1
+access_skybox_bag_type,skybox.bag.type,model_skybox_bag_type,base.group_user,1,0,0,0
 access_skybox_api_key,skybox.api.key,model_skybox_api_key,base.group_user,1,1,1,1
 access_skybox_tracking,skybox.tracking,model_skybox_tracking,base.group_user,1,1,1,1
 access_skybox_check_tn_wizard,skybox.check.tn.wizard,model_skybox_check_tn_wizard,base.group_user,1,1,1,1
@@ -25,6 +26,7 @@ access_skybox_movement_system,skybox.movement.system,model_skybox_movement,base.
 access_skybox_prealerte_admin,skybox.prealerte.admin,model_skybox_prealerte,group_skybox_admin,1,1,1,1
 access_skybox_prealerte_line_admin,skybox.prealerte.line.admin,model_skybox_prealerte_line,group_skybox_admin,1,1,1,1
 access_skybox_courier_admin,skybox.courier.admin,model_skybox_courier,group_skybox_admin,1,1,1,1
+access_skybox_bag_type_admin,skybox.bag.type.admin,model_skybox_bag_type,group_skybox_admin,1,1,1,1
 access_skybox_api_key_admin,skybox.api.key.admin,model_skybox_api_key,group_skybox_admin,1,1,1,1
 access_skybox_tracking_admin,skybox.tracking.admin,model_skybox_tracking,group_skybox_admin,1,1,1,1
 access_skybox_check_tn_wizard_admin,skybox.check.tn.wizard.admin,model_skybox_check_tn_wizard,group_skybox_admin,1,1,1,1

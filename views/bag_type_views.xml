@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_skybox_bag_type_list" model="ir.ui.view">
+        <field name="name">skybox.bag.type.list</field>
+        <field name="model">skybox.bag.type</field>
+        <field name="arch" type="xml">
+            <list string="Types de bag" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="description" optional="show"/>
+                <field name="bag_count" string="Bags"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_bag_type_form" model="ir.ui.view">
+        <field name="name">skybox.bag.type.form</field>
+        <field name="model">skybox.bag.type</field>
+        <field name="arch" type="xml">
+            <form string="Type de bag">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_bags" type="object"
+                                class="oe_stat_button" icon="fa-shopping-bag">
+                            <field name="bag_count" widget="statinfo" string="Bags"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="ex. Petit, Grand, Fragile..."/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="code"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group string="Description">
+                        <field name="description" nolabel="1"
+                               placeholder="A quoi sert ce type de bag ?"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_skybox_bag_type" model="ir.actions.act_window">
+        <field name="name">Types de bag</field>
+        <field name="res_model">skybox.bag.type</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Creez votre premier type de bag</p>
+            <p>Definissez les types de bags (ex. Petit, Grand, Fragile) que vous
+               pourrez ensuite affecter a chaque bag.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_skybox_bag_type"
+              name="Types de bag"
+              parent="menu_skybox_configuration"
+              action="action_skybox_bag_type"
+              sequence="5"/>
+
+</odoo>

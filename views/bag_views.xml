@@ -58,6 +58,7 @@
         <field name="arch" type="xml">
             <list string="Bags">
                 <field name="name"/>
+                <field name="skybox_bag_type_id" optional="show"/>
                 <field name="skybox_order_count" string="Articles"/>
                 <field name="skybox_open_state" widget="badge"
                        decoration-success="skybox_open_state == 'open'"
@@ -105,6 +106,11 @@
                             <field name="name" class="d-inline-block w-auto"/>
                         </h1>
                     </div>
+                    <group>
+                        <group>
+                            <field name="skybox_bag_type_id"/>
+                        </group>
+                    </group>
                     <group>
                         <group>
                             <field name="skybox_opened_by_label"/>
@@ -181,6 +187,7 @@
         <field name="arch" type="xml">
             <search string="Bags">
                 <field name="name" string="Bag"/>
+                <field name="skybox_bag_type_id"/>
                 <field name="skybox_order_ids" string="Tracking"
                        filter_domain="[('skybox_order_ids.tracking_number', 'ilike', self)]"/>
                 <filter name="with_orders" string="Avec commandes"
@@ -197,6 +204,8 @@
                 <group expand="0" string="Regrouper par">
                     <filter name="group_open_state" string="Etat"
                             context="{'group_by': 'skybox_open_state'}"/>
+                    <filter name="group_bag_type" string="Type de bag"
+                            context="{'group_by': 'skybox_bag_type_id'}"/>
                 </group>
             </search>
         </field>

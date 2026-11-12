@@ -58,6 +58,20 @@ REASSIGN_STATES = ('new', 'picking', 'picked', 'packed', 'ready')
 # tous preleves). Les Nouveau partent en premier, puis les Picking.
 BALANCE_STATES = ('new', 'picking')
 
+# --- Batches de preparation (regroupement de colis preleves ensemble) ---
+# Nombre de colis par batch cree automatiquement (0 = creation manuelle seule).
+BATCH_SIZE_PARAM = 'skybox.batch_size'
+DEFAULT_BATCH_SIZE = 10
+# Statut du batch deduit de l'etape de picking de l'ordre.
+BATCH_STATE_FROM_STATE = {
+    'new': 'not_ready',
+    'picking': 'in_progress',
+    'picked': 'done',
+    'packed': 'done',
+    'ready': 'done',
+    'dispatched': 'done',
+}
+
 
 class SkyboxPreparationOrder(models.Model):
     """Ordre de preparation envoye par Skybox (PREPARATION_ORDER)."""
@@ -105,6 +119,34 @@ class SkyboxPreparationOrder(models.Model):
     child_count = fields.Integer(compute='_compute_child_count', string="Ordres")
     parent_skybill_number = fields.Char(
         related='parent_id.skybill_number', string="Skybill parent")
+    # --- Batch (vague de picking : plusieurs colis preleves ensemble) ---
+    is_batch = fields.Boolean(
+        string="Batch", readonly=True, index=True, copy=False,
+        help="Vague de picking : un ordre qui regroupe des colis de plusieurs "
+             "ordres Skybox, prepares ensemble par un picker.")
+    batch_state = fields.Selection(
+        selection=[
+            ('not_ready', "Pas pret"),
+            ('in_progress', "En cours"),
+            ('done', "Termine"),
+        ],
+        string="Statut du batch", compute='_compute_batch_state', store=True,
+        help="Avancement du batch : Pas pret (en attente du picker), En cours "
+             "(picking commence), Termine (tous les colis preleves).")
+    batch_id = fields.Many2one(
+        comodel_name='skybox.preparation.order', string="Batch d'appartenance",
+        index=True, ondelete='set null', copy=False,
+        help="Vague de picking (batch) qui regroupe cet ordre Skybox.")
+    batch_group = fields.Char(
+        string="Regroupement batch", compute='_compute_batch_group',
+        store=True, index=True,
+        help="Cle de regroupement du tableau : le nom du batch si l'ordre "
+             "en fait partie (ou s'il est lui-meme un batch), sinon "
+             "\"Sans batch\".")
+    product_summary = fields.Text(
+        string="Produits", compute='_compute_product_summary',
+        help="Articles contenus dans chaque colis de cet ordre/batch.")
+
     agent_id = fields.Many2one(
         comodel_name='res.users', string="Picker", tracking=True, index=True,
         help="Picker connecte a l'app mobile, affecte a tour de role.")
@@ -222,6 +264,66 @@ class SkyboxPreparationOrder(models.Model):
         for order in self:
             order.child_count = len(order.child_ids)
 
+    @api.depends('is_batch', 'state')
+    def _compute_batch_state(self):
+        for order in self:
+            order.batch_state = (
+                BATCH_STATE_FROM_STATE.get(order.state, 'not_ready')
+                if order.is_batch and order.state != 'cancelled' else False)
+
+    @api.depends('is_batch', 'name', 'batch_id', 'batch_id.name')
+    def _compute_batch_group(self):
+        """Cle de regroupement du tableau : un batch (et les ordres qu'il
+        regroupe) partagent le nom du batch ; les ordres hors batch tombent
+        dans "Sans batch"."""
+        for order in self:
+            if order.is_batch:
+                order.batch_group = order.name
+            elif order.batch_id:
+                order.batch_group = order.batch_id.name
+            else:
+                order.batch_group = "Sans batch"
+
+    @api.depends('line_ids.tracking_number',
+                 'line_ids.parcel_id.line_ids.description',
+                 'line_ids.parcel_id.line_ids.quantity')
+    def _compute_product_summary(self):
+        """Resume des articles, colis par colis :
+        "SP-CINT-P: Article004 x1"."""
+        for order in self:
+            chunks = []
+            for line in order.line_ids:
+                parcel = line.parcel_id
+                items = []
+                if parcel:
+                    for item in parcel.line_ids:
+                        desc = (item.description or '/').strip()
+                        qty = item.quantity or 0.0
+                        items.append("%s x%g" % (desc, qty) if qty else desc)
+                label = line.tracking_number or (
+                    parcel.display_name if parcel else '')
+                if items:
+                    chunks.append("%s: %s" % (label, ", ".join(items)))
+                elif label:
+                    chunks.append(label)
+            order.product_summary = "\n".join(chunks)
+
+    def init(self):
+        """Backfill `batch_id` pour les ordres deja regroupes dans un batch
+        actif (les batches crees avant l'ajout du champ)."""
+        self.env.cr.execute("""
+            UPDATE skybox_preparation_order o
+            SET batch_id = bl.order_id
+            FROM skybox_preparation_order_line bl
+            JOIN skybox_preparation_order b ON b.id = bl.order_id
+            WHERE bl.source_order_id = o.id
+              AND b.is_batch = TRUE AND b.state != 'cancelled'
+              AND o.batch_id IS DISTINCT FROM bl.order_id
+        """)
+        if self.env.cr.rowcount:
+            self.env.invalidate_all()
+            self.search([])._compute_batch_group()
+
     def action_open_group(self):
         """Ouvre la commande groupee (parent) ou ses ordres (enfants)."""
         self.ensure_one()
@@ -244,7 +346,9 @@ class SkyboxPreparationOrder(models.Model):
             if not vals.get('reference'):
                 vals['reference'] = self.env['ir.sequence'].next_by_code(
                     'skybox.preparation.order') or vals.get('name')
-            if (not vals.get('agent_id') and not vals.get('is_group')
+            # Seuls les batches sont affectes a un picker : les ordres Skybox
+            # attendent d'etre regroupes dans un batch (vague de picking).
+            if (vals.get('is_batch') and not vals.get('agent_id')
                     and vals.get('state', 'new') != 'cancelled'):
                 vals['agent_id'] = self._next_picker().id
         return super().create(vals_list)
@@ -293,8 +397,8 @@ class SkyboxPreparationOrder(models.Model):
 
     @api.model
     def _open_orders_domain(self):
-        # Les commandes groupees ne sont jamais affectees a un picker.
-        return [('state', 'in', REASSIGN_STATES), ('is_group', '=', False)]
+        # Seuls les batches sont affectes aux pickers (pas encore termines).
+        return [('is_batch', '=', True), ('state', 'in', BALANCE_STATES)]
 
     @api.model
     def _reassign_delay(self):
@@ -748,22 +852,10 @@ class SkyboxPreparationOrder(models.Model):
             'last_event_id': event.event_id,
             'line_ids': lines,
         }
-        if (data.get('orderType') or '').upper() != 'CONSOLIDATION' or len(lines) < 2:
-            return self.create(vals)
-        # Consolidation : commande groupee (parent, dialogue avec Skybox) +
-        # un ordre par colis (enfants, affectes aux pickers).
-        group = self.create(dict(vals, is_group=True))
-        for index, (_cmd, _id, line) in enumerate(lines, start=1):
-            self.create(dict(
-                vals,
-                name="%s/%s" % (data['orderId'], index),
-                parent_id=group.id,
-                skybill_number=line.get('skybill_number') or vals['skybill_number'],
-                total_parcels=1,
-                total_weight=line.get('weight') or 0.0,
-                line_ids=[(0, 0, dict(line))],
-            ))
-        return group
+        # Un seul ordre par commande Skybox, quel que soit le nombre de colis
+        # (plus de decoupage en un ordre par colis). Les colis sont ensuite
+        # regroupes dans des batches (vagues de picking) cote entrepot.
+        return self.create(vals)
 
     LINE_COPY_FIELDS = (
         'tracking_number', 'parcel_id', 'skybill_number', 'current_bag_code',
@@ -1028,6 +1120,12 @@ class SkyboxPreparationOrder(models.Model):
                 raise UserError(
                     "Retour en arriere impossible : l'ordre %s est deja %s."
                     % (order.name, dict(order._fields['state'].selection)[order.state]))
+            if order.is_batch:
+                # Un batch ne dialogue pas avec Skybox : il repercute le picking
+                # sur les ordres Skybox sources de ses colis.
+                order.write({'state': step, 'has_exception': False})
+                order._batch_propagate(step)
+                continue
             if order.parent_id:
                 # Ordre d'une commande groupee : Skybox ne le connait pas, c'est
                 # la commande groupee qui envoie l'etape quand tous ses ordres
@@ -1120,6 +1218,17 @@ class SkyboxPreparationOrder(models.Model):
             order.line_ids.filtered(lambda l: not l.pick_state).write(
                 {'pick_state': 'PICKED'})
         return self._go_to('picked')
+
+    def _autoadvance_picked(self):
+        """Passe l'ordre en Picked des que tous ses colis sont scannes.
+        Appele apres un scan : un ordre reste en Picking tant qu'il lui reste
+        un colis non preleve, puis bascule en Picked automatiquement."""
+        for order in self:
+            if (order.state in ('new', 'picking')
+                    and order.line_ids
+                    and all(l.pick_state for l in order.line_ids)
+                    and not order._cancel_blocked()):
+                order.action_picked()
 
     def _fill_picked(self):
         """Etape Packed / Pret / Expedie sans passer par Picked : les colis
@@ -1220,6 +1329,125 @@ class SkyboxPreparationOrder(models.Model):
         for order in self.filtered('pending_status'):
             order._send_status()
         return self._sync_notification()
+
+    # ------------------------------------------------------------------
+    # Batches (vagues de picking)
+    # ------------------------------------------------------------------
+    @api.model
+    def _batch_size(self):
+        """Nombre de colis par batch automatique (Parametres > Skybox).
+        0 (ou moins) = pas de creation automatique."""
+        value = self.env['ir.config_parameter'].sudo().get_param(
+            BATCH_SIZE_PARAM, DEFAULT_BATCH_SIZE)
+        try:
+            return max(int(value), 0)
+        except (TypeError, ValueError):
+            return DEFAULT_BATCH_SIZE
+
+    def _line_copy_vals(self, line):
+        """Valeurs d'une ligne de colis, recopiees pour un batch."""
+        return {f: (line[f].id if line._fields[f].type == 'many2one'
+                    else line[f]) for f in self.LINE_COPY_FIELDS}
+
+    @api.model
+    def _ready_source_lines(self):
+        """Colis prets a etre regroupes dans un batch : dans un ordre Skybox
+        pas encore commence (Nouveau), pas deja dans un batch, et physiquement
+        ranges dans l'entrepot (Stored)."""
+        Line = self.env['skybox.preparation.order.line']
+        lines = Line.search([
+            ('order_id.is_batch', '=', False),
+            ('order_id.is_group', '=', False),
+            ('order_id.state', '=', 'new'),
+            ('batched', '=', False),
+        ], order='id')
+        return lines.filtered(lambda l: l.wh_location_id)
+
+    def _make_batch(self, source_lines):
+        """Cree un batch (vague de picking) avec les colis `source_lines`.
+        Ignore les colis deja dans un batch. Retourne le batch (ou vide)."""
+        source_lines = source_lines.filtered(
+            lambda l: not l.batched and not l.order_id.is_batch
+            and l.order_id.state == 'new')
+        if not source_lines:
+            return self.browse()
+        name = self.env['ir.sequence'].next_by_code(
+            'skybox.preparation.batch') or "BATCH/%s" % len(source_lines)
+        first = source_lines[0].order_id
+        batch = self.create({
+            'name': name,
+            'is_batch': True,
+            'order_type': 'BATCH',
+            'warehouse_id': first.warehouse_id.id,
+            'warehouse_code': first.warehouse_code,
+            'total_parcels': len(source_lines),
+            'total_weight': sum(source_lines.mapped('weight')),
+            'line_ids': [(0, 0, dict(self._line_copy_vals(line),
+                                     source_order_id=line.order_id.id,
+                                     source_line_id=line.id))
+                         for line in source_lines],
+        })
+        source_lines.write({'batched': True})
+        source_lines.order_id.write({'batch_id': batch.id})
+        batch.message_post(body="Batch cree avec %s colis (%s)." % (
+            len(source_lines),
+            ", ".join(sorted(set(source_lines.mapped('order_id.name'))))))
+        return batch
+
+    @api.model
+    def _cron_autobatch(self):
+        """Cree automatiquement des batches de N colis (Parametres > Skybox)
+        des qu'assez de colis prets s'accumulent."""
+        size = self._batch_size()
+        if size <= 0:
+            return
+        ready = self._ready_source_lines()
+        while len(ready) >= size:
+            chunk = ready[:size]
+            self._make_batch(chunk)
+            ready -= chunk
+
+    def _batch_propagate(self, step):
+        """Repercute l'avancement d'un batch sur les ordres Skybox sources :
+        - picking : les ordres sources passent en Picking (Skybox ne peut plus
+          les annuler) ;
+        - picked  : l'etat de prelevement est recopie sur les colis des ordres
+          sources ; un ordre source passe en Picked quand tous ses colis
+          (dans ce batch ou un autre) sont preleves."""
+        self.ensure_one()
+        sources = self.line_ids.source_order_id
+        if step == 'picking':
+            for src in sources.filtered(lambda s: s.state == 'new'):
+                src.action_picking()
+        elif step == 'picked':
+            for line in self.line_ids.filtered('source_line_id'):
+                line.source_line_id.with_context(skybox_group_sync=True).write(
+                    {'pick_state': line.pick_state or 'PICKED'})
+            for src in sources:
+                if src.state in ('new', 'picking') and all(
+                        l.pick_state for l in src.line_ids):
+                    src.action_picked()
+
+    def action_batch_start(self):
+        """Demarre le picking du batch (Pas pret -> En cours)."""
+        return self.filtered(lambda b: b.is_batch and b.state == 'new') \
+            .action_picking()
+
+    def action_batch_done(self):
+        """Termine le batch : tous ses colis sont preleves (-> Termine)."""
+        batches = self.filtered(lambda b: b.is_batch and b.state in ('new', 'picking'))
+        return batches.action_picked()
+
+    def action_batch_cancel(self):
+        """Annule un batch : ses colis redeviennent regroupables."""
+        for batch in self.filtered('is_batch'):
+            batch.line_ids.source_line_id.filtered(
+                lambda l: not l.pick_state).write({'batched': False})
+            batch.line_ids.source_order_id.filtered(
+                lambda o: o.batch_id == batch).write({'batch_id': False})
+            batch.write({'state': 'cancelled', 'cancelled_at': fields.Datetime.now()})
+            batch.message_post(body="Batch annule par %s." % self.env.user.name)
+        return True
 
     def _sync_notification(self, cancel=False):
         """Resultat de l'envoi en notification discrete (bus), sans action
@@ -1368,6 +1596,18 @@ class SkyboxPreparationOrderLine(models.Model):
         comodel_name='skybox.preparation.order', string="Ordre",
         required=True, ondelete='cascade', index=True,
     )
+    # --- Batch (vague de picking) ---
+    batched = fields.Boolean(
+        string="Dans un batch", index=True, copy=False,
+        help="Ce colis est deja dans un batch : il ne peut pas etre mis dans "
+             "un autre.")
+    source_order_id = fields.Many2one(
+        comodel_name='skybox.preparation.order', string="Ordre source",
+        index=True, ondelete='cascade',
+        help="Pour une ligne de batch : l'ordre Skybox d'ou vient le colis.")
+    source_line_id = fields.Many2one(
+        comodel_name='skybox.preparation.order.line', string="Ligne source",
+        index=True, ondelete='cascade')
     tracking_number = fields.Char(string="Numero de tracking")
     parcel_id = fields.Many2one(comodel_name='skybox.parcel', string="Colis")
     order_state = fields.Selection(related='order_id.state', string="Statut ordre")
@@ -1404,22 +1644,36 @@ class SkyboxPreparationOrderLine(models.Model):
     parcel_state = fields.Selection(
         selection=lambda self: self.env['skybox.preparation.order']._fields['state'].selection,
         string="Statut", compute='_compute_parcel_state',
-        help="Ou en est le colis : statut de son ordre (pour une commande "
-             "groupee, l'ordre du regroupement qui contient le colis).")
+        help="Ou en est le colis : Picking tant qu'il n'est pas scanne, "
+             "Picked une fois scanne par l'app ; au-dela, le statut de son "
+             "ordre (pour une commande groupee, l'ordre du regroupement qui "
+             "contient le colis).")
     parcel_order_id = fields.Many2one(
         comodel_name='skybox.preparation.order', string="Ordre du colis",
         compute='_compute_parcel_state')
 
-    @api.depends('order_id.state', 'order_id.child_ids.state', 'tracking_number')
+    @api.depends('order_id.state', 'order_id.child_ids.state', 'pick_state',
+                 'order_id.child_ids.line_ids.pick_state', 'tracking_number')
     def _compute_parcel_state(self):
         for line in self:
             order = line.order_id
+            scanned = line.pick_state
             if order.is_group:
                 tn = (line.tracking_number or '').lower()
-                order = order.child_ids.filtered(lambda c: any(
-                    (l.tracking_number or '').lower() == tn for l in c.line_ids))[:1] or order
+                child = order.child_ids.filtered(lambda c: any(
+                    (l.tracking_number or '').lower() == tn for l in c.line_ids))[:1]
+                if child:
+                    order = child
+                    # Le scan est porte par la ligne de l'ordre enfant.
+                    scanned = child.line_ids.filtered(
+                        lambda l: (l.tracking_number or '').lower() == tn)[:1].pick_state
             line.parcel_order_id = order
-            line.parcel_state = order.state
+            # Pendant le picking, le statut du colis suit son scan : Picking
+            # tant qu'il n'est pas preleve, Picked une fois scanne.
+            if order.state in ('new', 'picking'):
+                line.parcel_state = 'picked' if scanned else 'picking'
+            else:
+                line.parcel_state = order.state
 
     wh_location_id = fields.Many2one(
         comodel_name='stock.location', string="Emplacement dans le WH",
@@ -1504,3 +1758,34 @@ class SkyboxPreparationOrderLine(models.Model):
         self.ensure_one()
         return self.order_id._history_popup(
             self.tracking_number or self.parcel_id.tracking_number)
+
+    def action_open_source_order(self):
+        """Ouvre l'ordre Skybox d'origine du colis (depuis un batch), pour
+        l'emballer / l'expedier."""
+        self.ensure_one()
+        order = self.source_order_id or self.order_id
+        return {
+            'type': 'ir.actions.act_window',
+            'name': order.name,
+            'res_model': 'skybox.preparation.order',
+            'res_id': order.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
+
+    def action_create_batch(self):
+        """Cree un batch avec les colis selectionnes (ignore ceux deja dans un
+        batch ou dont l'ordre est deja commence)."""
+        batch = self.env['skybox.preparation.order']._make_batch(self)
+        if not batch:
+            raise UserError(
+                "Aucun colis regroupable dans la selection (deja dans un "
+                "batch, ou ordre deja commence).")
+        return {
+            'type': 'ir.actions.act_window',
+            'name': "Batch %s" % batch.name,
+            'res_model': 'skybox.preparation.order',
+            'res_id': batch.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }

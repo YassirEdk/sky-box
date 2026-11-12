@@ -98,12 +98,17 @@ class SkyboxPickerApi(SkyboxLoginController):
                 'weight': line.weight,
                 'fragile': line.fragile,
                 'pick_state': line.pick_state or None,
+                'parcel_state': line.parcel_state,
             } for line in order.line_ids],
         })
         return data
 
     def _step_allowed(self, order, step):
         if order.state in ('dispatched', 'cancelled') or order._cancel_blocked():
+            return False
+        # Un batch (vague de picking) s'arrete a Picked : l'emballage et
+        # l'expedition se font ordre par ordre dans le backoffice.
+        if order.is_batch and step not in ('picking', 'picked'):
             return False
         ranks = list(STEP_ACTIONS)
         current = ranks.index(order.state) if order.state in ranks else -1
@@ -168,9 +173,12 @@ class SkyboxPickerApi(SkyboxLoginController):
         line, error = self._scan_line(order, kwargs)
         if error:
             return error
+        # Tous les colis scannes -> l'ordre passe en Picked automatiquement.
+        order._autoadvance_picked()
         return dict(self._order_summary(order), success=True,
                     line_id=line.id, tracking_number=line.tracking_number,
-                    pick_state=line.pick_state)
+                    pick_state=line.pick_state,
+                    parcel_state=line.parcel_state)
 
     @http.route('/skybox/api/order/step', type='json', auth='public',
                 methods=['POST'], csrf=False)

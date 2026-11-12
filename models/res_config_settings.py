@@ -15,6 +15,20 @@ class ResConfigSettings(models.TransientModel):
              "en cours lui sont gardes pendant ce delai. Passe ce delai, ils "
              "sont redistribues aux autres pickers connectes. 0 = immediat.")
 
+    skybox_batch_size = fields.Integer(
+        string="Colis par batch",
+        config_parameter='skybox.batch_size', default=10,
+        help="Nombre de colis regroupes automatiquement dans un batch (vague "
+             "de picking) des qu'assez de colis prets s'accumulent. "
+             "0 = pas de creation automatique (batches crees a la main).")
+
+    skybox_warehouse_code = fields.Char(
+        string="Code entrepot",
+        config_parameter='skybox.warehouse_code',
+        help="Code entrepot envoye dans le champ warehouseCode des appels "
+             "vers Skybox (ex: WH-2026-00002). Defini une seule fois ici pour "
+             "toute l'integration.")
+
     skybox_timezone = fields.Selection(
         selection=_tz_get, string="Fuseau horaire",
         config_parameter=TIMEZONE_PARAM, default=DEFAULT_TIMEZONE,

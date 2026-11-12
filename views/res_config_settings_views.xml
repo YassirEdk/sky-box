@@ -8,6 +8,12 @@
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
                 <app data-string="Skybox" string="Skybox" name="skybox">
+                    <block title="Integration Skybox" name="skybox_integration">
+                        <setting string="Code entrepot"
+                                 help="Code entrepot envoye dans le champ warehouseCode des appels vers Skybox (ex: WH-2026-00002). Defini une seule fois ici pour toute l'integration.">
+                            <field name="skybox_warehouse_code" class="o_light_label"/>
+                        </setting>
+                    </block>
                     <block title="Dates et heures" name="skybox_time">
                         <setting string="Fuseau horaire"
                                  help="Heure de travail de tout le monde : les dates s'affichent a cette heure quel que soit le fuseau de l'ordinateur. Les dates envoyees a Skybox partent avec ce decalage.">
@@ -19,6 +25,11 @@
                                  help="Delai avant de redistribuer aux autres pickers les ordres d'un picker deconnecte ou inactif. 0 = immediat.">
                             <field name="skybox_picker_reassign_delay" class="o_light_label" style="width: 6rem;"/>
                             <span class="ms-1">minutes</span>
+                        </setting>
+                        <setting string="Colis par batch"
+                                 help="Nombre de colis regroupes automatiquement dans un batch (vague de picking) des qu'assez de colis prets s'accumulent. 0 = creation manuelle seule.">
+                            <field name="skybox_batch_size" class="o_light_label" style="width: 6rem;"/>
+                            <span class="ms-1">colis</span>
                         </setting>
                     </block>
                     <block title="Mouvements d'entrepot" name="skybox_movements">

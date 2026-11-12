@@ -14,12 +14,20 @@
                 <field name="priority"/>
                 <field name="partner_id"/>
                 <field name="parent_skybill_number" string="Groupe" optional="show"/>
+                <field name="batch_id" string="Batch" optional="show"/>
+                <field name="product_summary" string="Produits" optional="hide"/>
                 <field name="agent_id" widget="many2one_avatar_user" optional="show"/>
                 <field name="suite_number" optional="show"/>
                 <field name="skybill_number" optional="show"/>
                 <field name="total_parcels"/>
                 <field name="total_weight" optional="show"/>
                 <field name="ship_to_city" optional="show"/>
+                <field name="is_batch" column_invisible="1"/>
+                <field name="batch_state" widget="badge" string="Batch"
+                       optional="show"
+                       decoration-info="batch_state == 'not_ready'"
+                       decoration-warning="batch_state == 'in_progress'"
+                       decoration-success="batch_state == 'done'"/>
                 <field name="state" widget="badge"
                        decoration-info="state == 'new'"
                        decoration-warning="state in ('picking', 'picked', 'packed', 'ready')"
@@ -39,6 +47,10 @@
                 <field name="name"/>
                 <field name="reference"/>
                 <field name="state"/>
+                <field name="is_batch"/>
+                <field name="batch_id"/>
+                <field name="batch_group"/>
+                <field name="product_summary"/>
                 <field name="priority"/>
                 <field name="partner_id"/>
                 <field name="suite_number"/>
@@ -92,10 +104,16 @@
                             </div>
 
                             <!-- Badges -->
-                            <div t-if="record.parent_skybill_number.raw_value or record.has_fragile.raw_value or record.has_exception.raw_value"
+                            <div t-if="record.parent_skybill_number.raw_value or record.has_fragile.raw_value or record.has_exception.raw_value or record.is_batch.raw_value or record.batch_id.raw_value"
                                  class="o_po_tags">
                                 <span t-if="record.has_exception.raw_value" class="o_po_tag o_po_tag--danger">
                                     <i class="fa fa-exclamation-triangle" title="Exception"/> <field name="exception_code"/>
+                                </span>
+                                <span t-if="record.is_batch.raw_value" class="badge rounded-pill text-bg-primary">
+                                    <i class="fa fa-layer-group me-1" title="Batch (vague de picking)"/> Batch
+                                </span>
+                                <span t-elif="record.batch_id.raw_value" class="badge rounded-pill text-bg-secondary">
+                                    <i class="fa fa-layer-group me-1" title="Appartient au batch"/> <field name="batch_id"/>
                                 </span>
                                 <span t-if="record.parent_skybill_number.raw_value" class="badge rounded-pill text-bg-info o_po_group">
                                     <i class="fa fa-object-group me-1" title="Commande groupee"/><field name="parent_skybill_number"/>
@@ -126,6 +144,10 @@
 
                             <!-- Infos -->
                             <div class="o_po_body">
+                                <div t-if="record.product_summary.raw_value" class="o_po_line">
+                                    <i class="fa fa-tags o_po_ico" title="Produits"/>
+                                    <span class="o_po_products" style="white-space: pre-line;"><field name="product_summary"/></span>
+                                </div>
                                 <div t-if="record.location_summary.raw_value" class="o_po_line">
                                     <i class="fa fa-th-large o_po_ico" title="Emplacement"/>
                                     <span class="o_po_bin"><field name="location_summary"/></span>
@@ -185,10 +207,20 @@
             <form string="Ordre de preparation" create="0">
                 <header>
                     <field name="is_group" invisible="1"/>
+                    <field name="is_batch" invisible="1"/>
+                    <field name="batch_state" invisible="1"/>
                     <field name="parent_id" invisible="1"/>
                     <field name="cancel_blocked" invisible="1"/>
                     <field name="cancel_state" invisible="1"/>
                     <field name="sync_state" invisible="1"/>
+                    <button name="action_batch_start" string="Demarrer le picking" type="object"
+                            class="btn-primary" invisible="not is_batch or state != 'new'"/>
+                    <button name="action_batch_done" string="Batch termine" type="object"
+                            class="btn-primary" invisible="not is_batch or state not in ('new', 'picking')"
+                            confirm="Marquer tous les colis de ce batch comme preleves ? Les ordres Skybox concernes passeront en Picked."/>
+                    <button name="action_batch_cancel" string="Annuler le batch" type="object"
+                            class="btn-secondary" invisible="not is_batch or state in ('done', 'cancelled')"
+                            confirm="Annuler ce batch ? Ses colis non preleves pourront etre regroupes a nouveau."/>
                     <button name="action_cancel_confirm" string="Confirmer l'annulation" type="object"
                             class="btn-danger" invisible="parent_id or cancel_state != 'requested'"
                             confirm="Confirmer l'annulation demandee par Skybox ? L'ordre est arrete et les colis preleves sont remis a leur emplacement."/>
@@ -196,25 +228,27 @@
                             invisible="parent_id or cancel_state != 'requested'"
                             confirm="Refuser l'annulation ? La preparation continue a l'etape atteinte (motif du refus envoye a Skybox)."/>
                     <button name="action_picking" string="Commencer le picking" type="object"
-                            class="btn-primary" invisible="cancel_blocked or is_group or state != 'new'"/>
+                            class="btn-primary" invisible="cancel_blocked or is_group or is_batch or state != 'new'"/>
                     <button name="action_picked" string="Picked" type="object"
-                            class="btn-primary" invisible="cancel_blocked or is_group or state not in ('new', 'picking')"/>
+                            class="btn-primary" invisible="cancel_blocked or is_group or is_batch or state not in ('new', 'picking')"/>
                     <button name="action_packed" string="Packed" type="object"
-                            class="btn-primary" invisible="cancel_blocked or is_group or state not in ('new', 'picking', 'picked')"/>
+                            class="btn-primary" invisible="cancel_blocked or is_group or is_batch or state not in ('new', 'picking', 'picked')"/>
                     <button name="action_ready" string="Pret a expedier" type="object"
-                            invisible="cancel_blocked or is_group or state not in ('new', 'picking', 'picked', 'packed')"/>
+                            invisible="cancel_blocked or is_group or is_batch or state not in ('new', 'picking', 'picked', 'packed')"/>
                     <button name="action_dispatched" string="Expedie" type="object"
-                            class="btn-primary" invisible="cancel_blocked or parent_id or state != 'ready'"
+                            class="btn-primary" invisible="cancel_blocked or parent_id or is_batch or state != 'ready'"
                             confirm="Le transporteur a pris le carton ? Le numero de suivi sera envoye au client."/>
                     <button name="action_exception" string="Signaler une exception" type="object"
-                            class="btn-danger" invisible="cancel_blocked or state in ('dispatched', 'cancelled')"/>
+                            class="btn-danger" invisible="cancel_blocked or is_batch or state in ('dispatched', 'cancelled')"/>
                     <button name="action_resend" string="Renvoyer a Skybox" type="object"
                             invisible="not pending_status"/>
                     <button name="action_reset_new" string="Remettre en Nouveau" type="object"
-                            class="btn-primary" icon="fa-undo" invisible="state != 'cancelled'"
+                            class="btn-primary" icon="fa-undo" invisible="is_batch or state != 'cancelled'"
                             confirm="Remettre cet ordre en Nouveau ? Le picking est a refaire. Si Skybox l'a annule ou ne le connait pas, ses etapes ne seront pas acceptees par Skybox."/>
-                    <field name="state" widget="statusbar"
+                    <field name="state" widget="statusbar" invisible="is_batch"
                            statusbar_visible="new,picking,picked,packed,ready,dispatched"/>
+                    <field name="batch_state" widget="statusbar" invisible="not is_batch"
+                           statusbar_visible="not_ready,in_progress,done"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
@@ -244,6 +278,13 @@
                         <field name="parent_id" class="d-inline fw-bold" readonly="1"/>
                         (Skybill <field name="parent_skybill_number" class="d-inline"/>) :
                         l'expedition se fait sur la commande groupee.
+                    </div>
+                    <div class="alert alert-info" role="status" invisible="not is_batch">
+                        <i class="fa fa-layer-group me-1" title="Batch"/>
+                        <strong>Batch (vague de picking)</strong> : regroupe des colis de
+                        plusieurs ordres Skybox, preleves ensemble par un picker. Quand le
+                        batch est termine, chaque colis passe en Picked sur son ordre Skybox
+                        d'origine (l'emballage et l'expedition se font ensuite ordre par ordre).
                     </div>
                     <div class="alert alert-danger" role="alert"
                          invisible="state != 'cancelled'">
@@ -332,16 +373,22 @@
                            invisible="not instructions"/>
                     <notebook>
                         <page string="Colis a preparer" name="lines">
-                            <field name="line_ids">
+                            <field name="line_ids" readonly="is_batch">
                                 <list editable="bottom" create="0" delete="0">
                                     <field name="parcel_state" widget="badge"
-                                           column_invisible="not parent.is_group"
                                            decoration-info="parcel_state == 'new'"
-                                           decoration-warning="parcel_state in ('picking', 'picked', 'packed', 'ready')"
-                                           decoration-success="parcel_state == 'dispatched'"
+                                           decoration-warning="parcel_state == 'picking'"
+                                           decoration-success="parcel_state in ('picked', 'packed', 'ready', 'dispatched')"
                                            decoration-muted="parcel_state == 'cancelled'"/>
                                     <field name="parcel_order_id" optional="show"
                                            column_invisible="not parent.is_group"/>
+                                    <field name="source_order_id" optional="show"
+                                           column_invisible="not parent.is_batch"/>
+                                    <button name="action_open_source_order" type="object"
+                                            string="Ouvrir l'ordre" icon="fa-external-link"
+                                            title="Ouvrir l'ordre Skybox pour l'emballer / l'expedier"
+                                            class="btn-link"
+                                            column_invisible="not parent.is_batch"/>
                                     <field name="pick_state"/>
                                     <field name="tracking_number" readonly="1"/>
                                     <field name="parcel_id" optional="hide"/>
@@ -438,7 +485,13 @@
                         domain="[('cancel_state', '=', 'requested')]"/>
                 <filter name="cancelled" string="Annules"
                         domain="[('state', '=', 'cancelled')]"/>
+                <separator/>
+                <filter name="batches" string="Batches"
+                        domain="[('is_batch', '=', True)]"/>
+                <filter name="skybox_orders" string="Ordres Skybox"
+                        domain="[('is_batch', '=', False)]"/>
                 <group expand="0" string="Regrouper par">
+                    <filter name="group_batch" string="Batch" context="{'group_by': 'batch_group'}"/>
                     <filter name="group_state" string="Statut" context="{'group_by': 'state'}"/>
                     <filter name="group_agent" string="Picker" context="{'group_by': 'agent_id'}"/>
                     <filter name="group_priority" string="Priorite" context="{'group_by': 'priority'}"/>
@@ -451,7 +504,7 @@
         <field name="name">Ordres de preparation</field>
         <field name="res_model">skybox.preparation.order</field>
         <field name="view_mode">kanban,list,form</field>
-        <field name="domain">[('state', '!=', 'dispatched'), ('is_group', '=', False)]</field>
+        <field name="domain">[('state', '!=', 'dispatched'), ('is_group', '=', False), ('batch_id', '=', False)]</field>
         <field name="search_view_id" ref="view_skybox_preparation_order_search"/>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
@@ -479,5 +532,72 @@
               parent="menu_skybox_tracking"
               action="action_skybox_preparation_order"
               sequence="40"/>
+
+    <!-- ============================================================ -->
+    <!-- Colis a preparer : selection -> creer un batch               -->
+    <!-- ============================================================ -->
+    <record id="view_skybox_ready_line_list" model="ir.ui.view">
+        <field name="name">skybox.ready.line.list</field>
+        <field name="model">skybox.preparation.order.line</field>
+        <field name="arch" type="xml">
+            <list string="Colis a preparer" create="0" delete="0">
+                <header>
+                    <button name="action_create_batch" type="object"
+                            string="Creer un batch" class="btn-primary"/>
+                </header>
+                <field name="tracking_number"/>
+                <field name="order_id" string="Ordre Skybox"/>
+                <field name="order_partner_id" string="Client" optional="show"/>
+                <field name="skybill_number" optional="hide"/>
+                <field name="current_place" string="Emplacement"/>
+                <field name="weight" optional="show"/>
+                <field name="fragile" optional="show"/>
+                <button name="action_history" type="object"
+                        icon="fa-history" title="Historique du colis"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_skybox_ready_line_search" model="ir.ui.view">
+        <field name="name">skybox.ready.line.search</field>
+        <field name="model">skybox.preparation.order.line</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="tracking_number"/>
+                <field name="order_id"/>
+                <field name="order_partner_id" string="Client"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="group_order" string="Ordre Skybox"
+                            context="{'group_by': 'order_id'}"/>
+                    <filter name="group_client" string="Client"
+                            context="{'group_by': 'order_partner_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_skybox_ready_lines" model="ir.actions.act_window">
+        <field name="name">Colis a preparer</field>
+        <field name="res_model">skybox.preparation.order.line</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_skybox_ready_line_list"/>
+        <field name="search_view_id" ref="view_skybox_ready_line_search"/>
+        <field name="domain">[('order_id.is_batch', '=', False), ('order_id.is_group', '=', False), ('order_id.state', '=', 'new'), ('batched', '=', False)]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucun colis en attente de preparation
+            </p>
+            <p>
+                Selectionnez des colis puis "Creer un batch" pour les prelever
+                ensemble, ou laissez le systeme creer les batches automatiquement.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_skybox_ready_lines"
+              name="Colis a preparer"
+              parent="menu_skybox_tracking"
+              action="action_skybox_ready_lines"
+              sequence="39"/>
 
 </odoo>

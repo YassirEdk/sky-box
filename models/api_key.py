@@ -239,8 +239,12 @@ class SkyboxApiKey(models.Model):
         now = fields.Datetime.now()
         user = self.env.user
         received_at = format_skybox_datetime(self.env, now)
-        warehouse_code = self.warehouse_code or (
-            user.warehouse_id.code if user.warehouse_id else '')
+        # Le code entrepot provient du parametre global unique
+        # (Parametres > Skybox > Code entrepot), avec repli sur le champ de la
+        # cle API pour compatibilite.
+        warehouse_code = (
+            self.env['ir.config_parameter'].sudo().get_param(
+                'skybox.warehouse_code') or self.warehouse_code or '')
         operator = self.operator_code or user.login
         bags = self._bags_by_tracking(numbers)
         packages = []

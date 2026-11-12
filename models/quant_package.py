@@ -6,6 +6,12 @@ from odoo.exceptions import UserError
 class StockQuantPackage(models.Model):
     _inherit = 'stock.quant.package'
 
+    # Type de bag (parametrable : voir skybox.bag.type).
+    skybox_bag_type_id = fields.Many2one(
+        comodel_name='skybox.bag.type', string="Type de bag",
+        index=True, ondelete='set null',
+    )
+
     # Commandes encore dans le bag : receptions pas encore stockees
     # (Receipt, ou Processed par Skybox ; toujours en entree / WH/Input).
     skybox_order_ids = fields.One2many(

@@ -2,6 +2,7 @@
 from . import res_users
 from . import hr_employee
 from . import courier
+from . import bag_type
 from . import stock_picking
 from . import quant_package
 from . import picking_history
